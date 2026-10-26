@@ -42,10 +42,14 @@ export interface LayoutVariant {
  * the least deep of the three but never reverts to a flat/unsafe ratio.
  */
 export const LAYOUT_VARIANTS: LayoutVariant[] = [
-  { id: "compact", label: "Compact", description: "Closer to square — shorter exterior walls, tighter hallway.", ratioMultiplier: 0.75 },
+  { id: "compact", label: "Compact", description: "Closer to square — shorter exterior walls, tighter hallway.", ratioMultiplier: 0.85 },
   { id: "classic", label: "Classic", description: "The engine's own balanced default proportion for this program.", ratioMultiplier: 1.0 },
-  { id: "wide", label: "Wide", description: "A broad street-facing front, shallower depth — ranch-style massing.", ratioMultiplier: 1.3 },
+  { id: "wide", label: "Wide", description: "A broad street-facing front, shallower depth — ranch-style massing.", ratioMultiplier: 1.25 },
 ];
+
+/** Absolute floor/ceiling on the footprint ratio regardless of baseline*multiplier — keeps even a "Compact" variant on an already-deep (3+ bedroom) baseline from overshooting into unusably narrow side rooms. */
+const MIN_ASPECT_RATIO = 0.7;
+const MAX_ASPECT_RATIO = 2.0;
 
 /**
  * Picks the footprint width:depth ratio a plan should use by default: once the
@@ -74,7 +78,8 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
   const warnings: string[] = [];
 
   const interiorArea = input.sqft;
-  const resolvedAspectRatio = aspectRatio ?? computeBaselineAspectRatio(program);
+  const requestedAspectRatio = aspectRatio ?? computeBaselineAspectRatio(program);
+  const resolvedAspectRatio = Math.min(MAX_ASPECT_RATIO, Math.max(MIN_ASPECT_RATIO, requestedAspectRatio));
   const width = roundTo(Math.sqrt(interiorArea * resolvedAspectRatio), 0.5);
   const depth = roundTo(interiorArea / width, 0.5);
 
