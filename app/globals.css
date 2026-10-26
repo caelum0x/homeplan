@@ -191,6 +191,36 @@ h3 {
   max-width: 560px;
 }
 
+.hero-centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 64px 0 12px;
+}
+
+.hero-centered .hero-eyebrow {
+  margin-bottom: 20px;
+}
+
+.hero-centered h1 {
+  font-size: 46px;
+  max-width: 740px;
+  margin-bottom: 18px;
+}
+
+.hero-centered p {
+  max-width: 540px;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .hero-centered h1 {
+    font-size: 32px;
+  }
+}
+
 /* ---------------------------------------------------------------------
    Cards / panels
 --------------------------------------------------------------------- */

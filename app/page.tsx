@@ -4,22 +4,27 @@ import { useEffect, useState } from "react";
 import { FloorPlanSvg } from "@/components/FloorPlanSvg";
 import { FloorPlanStudio } from "@/components/FloorPlanStudio";
 import { FloorPlan3D } from "@/components/FloorPlan3D";
+import { AiRenderPanel } from "@/components/AiRenderPanel";
 import { PricingCta } from "@/components/PricingCta";
 import { VariantPicker } from "@/components/VariantPicker";
 import { ChatEditPanel } from "@/components/ChatEditPanel";
+import { TemplateGallery } from "@/components/TemplateGallery";
+import { UploadPlanForm } from "@/components/UploadPlanForm";
 import { BrandMark } from "@/components/BrandMark";
 import type { BriefInput, FloorPlan } from "@/lib/layout/types";
 import type { FloorPlanOption } from "@/lib/layout/generate";
 import { downloadPlanAsPng } from "@/lib/exportPng";
 import { buildShareUrl, readPlanFromLocation } from "@/lib/sharePlan";
+import { saveTemplate } from "@/lib/templates";
 
 interface GenerateResponse {
   input: BriefInput;
   options: FloorPlanOption[];
 }
 
-type ViewMode = "plan" | "studio" | "3d";
+type ViewMode = "plan" | "studio" | "3d" | "render";
 type Stage = "idle" | "loading" | "variants" | "editing";
+type EntryMode = "describe" | "templates" | "upload";
 
 async function downloadExport(plan: FloorPlan, format: "pdf" | "dxf") {
   const res = await fetch(`/api/export/${format}`, {
@@ -58,6 +63,10 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<ViewMode>("plan");
   const [exporting, setExporting] = useState<"pdf" | "dxf" | "png" | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+  const [entryMode, setEntryMode] = useState<EntryMode>("describe");
+  const [traceImageUrl, setTraceImageUrl] = useState<string | null>(null);
+  const [saveTemplateName, setSaveTemplateName] = useState("");
+  const [templateSaved, setTemplateSaved] = useState(false);
 
   // A shared link (?plan=...) opens straight into the editor with that exact plan.
   useEffect(() => {
@@ -130,6 +139,52 @@ export default function Home() {
     setTimeout(() => setShareCopied(false), 2000);
   }
 
+  function handleTemplateSelect(templatePlan: FloorPlan, label: string) {
+    setResult(null);
+    setPlan(templatePlan);
+    setSelectedVariantLabel(label);
+    setTraceImageUrl(null);
+    setViewMode("plan");
+    setStage("editing");
+  }
+
+  async function handleUploadSubmit(uploadDescription: string, imageDataUrl: string | null) {
+    setStage("loading");
+    setError(null);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: uploadDescription }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Something went wrong.");
+        setStage("idle");
+        return;
+      }
+      const options: FloorPlanOption[] = data.options;
+      const classic = options.find((o) => o.variant.id === "classic") ?? options[0];
+      setResult(data);
+      setPlan(classic.plan);
+      setSelectedVariantLabel(`${classic.variant.label} (starter, trace onto your upload)`);
+      setTraceImageUrl(imageDataUrl);
+      setViewMode("studio");
+      setStage("editing");
+    } catch {
+      setError("Could not reach the generator. Try again.");
+      setStage("idle");
+    }
+  }
+
+  function handleSaveTemplate() {
+    if (!plan || !saveTemplateName.trim()) return;
+    saveTemplate(saveTemplateName.trim(), plan);
+    setSaveTemplateName("");
+    setTemplateSaved(true);
+    setTimeout(() => setTemplateSaved(false), 2000);
+  }
+
   return (
     <>
       <div className="topbar">
@@ -138,50 +193,81 @@ export default function Home() {
             <BrandMark className="brand-mark" />
             HomePlan
           </a>
-          <nav className="nav-links">
-            <span>Self-host · MIT</span>
-            <a href="https://github.com/caelum0x/homeplan" target="_blank" rel="noreferrer">
-              GitHub
+          <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
+            <nav className="nav-links">
+              <a href="#features">Features</a>
+              <a href="#pricing">Pricing</a>
+              <a href="https://github.com/caelum0x/homeplan" target="_blank" rel="noreferrer">
+                GitHub
+              </a>
+            </nav>
+            <a href="#pricing" className="btn btn-primary btn-sm" style={{ borderRadius: "var(--radius-full)" }}>
+              Get HomePlan Pro
+              <ArrowIcon />
             </a>
-          </nav>
+          </div>
         </div>
       </div>
 
       <main className="container" style={{ paddingBottom: 60 }}>
-        <section className="hero">
+        <section className="hero hero-centered">
           <span className="hero-eyebrow">Open-source Maket.ai alternative</span>
-          <h1 style={{ fontFamily: "var(--font-fraunces), serif" }}>Describe a home. Get a real floor plan.</h1>
+          <h1 style={{ fontFamily: "var(--font-fraunces), serif" }}>The open-source AI floor plan generator</h1>
           <p>
-            Plain-language brief in, a computed room layout out — walls, doors and dimensions derived from the
-            actual geometry, not a canned image. Free, instant, self-hostable, MIT licensed.
+            Describe a home in plain language and get a real, computed room layout back — walls, doors, dimensions,
+            furniture, even a photorealistic render.
+            <br />
+            Free, instant, self-hostable, MIT licensed.
           </p>
         </section>
 
-        <form onSubmit={handleSubmit} className="card generator-card">
-          <label className="field-label" htmlFor="brief">
-            Describe the home
-          </label>
-          <textarea
-            id="brief"
-            className="textarea"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g. 3-bedroom, 2-bath, ~1400 sqft, open-plan kitchen/living"
-            rows={3}
-          />
-          <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
-            <button type="submit" className="btn btn-primary" disabled={stage === "loading" || description.trim().length < 5}>
-              {stage === "loading" ? "Generating…" : "Generate floor plan"}
-              {stage !== "loading" && <ArrowIcon />}
-            </button>
-            <span style={{ fontSize: 12.5, color: "var(--color-ink-faint)" }}>Try:</span>
-            {EXAMPLES.map((ex) => (
-              <button key={ex} type="button" onClick={() => setDescription(ex)} className="chip">
-                {ex.length > 36 ? ex.slice(0, 36) + "…" : ex}
+        <div id="features" className="card generator-card">
+          <div className="segmented" style={{ marginBottom: 18 }}>
+            {(
+              [
+                { id: "describe" as const, label: "Describe" },
+                { id: "templates" as const, label: "Templates" },
+                { id: "upload" as const, label: "Upload existing plan" },
+              ]
+            ).map((tab) => (
+              <button key={tab.id} type="button" onClick={() => setEntryMode(tab.id)} className={`segmented-btn ${entryMode === tab.id ? "active" : ""}`}>
+                {tab.label}
               </button>
             ))}
           </div>
-        </form>
+
+          {entryMode === "describe" && (
+            <form onSubmit={handleSubmit}>
+              <label className="field-label" htmlFor="brief">
+                Describe the home
+              </label>
+              <textarea
+                id="brief"
+                className="textarea"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. 3-bedroom, 2-bath, ~1400 sqft, open-plan kitchen/living"
+                rows={3}
+              />
+              <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+                <button type="submit" className="btn btn-primary" disabled={stage === "loading" || description.trim().length < 5}>
+                  {stage === "loading" ? "Generating…" : "Generate floor plan"}
+                  {stage !== "loading" && <ArrowIcon />}
+                </button>
+                <span style={{ fontSize: 12.5, color: "var(--color-ink-faint)" }}>Try:</span>
+                {EXAMPLES.map((ex) => (
+                  <button key={ex} type="button" onClick={() => setDescription(ex)} className="chip">
+                    {ex.length > 36 ? ex.slice(0, 36) + "…" : ex}
+                  </button>
+                ))}
+              </div>
+            </form>
+          )}
+
+          {entryMode === "templates" && <TemplateGallery onSelect={handleTemplateSelect} />}
+
+          {entryMode === "upload" && <UploadPlanForm onSubmit={handleUploadSubmit} loading={stage === "loading"} />}
+        </div>
 
         {error && (
           <div className="alert alert-danger" role="alert" style={{ marginTop: 20 }}>
@@ -194,7 +280,7 @@ export default function Home() {
           <div className="skeleton" style={{ height: 320, marginTop: 28 }} aria-label="Generating floor plan" />
         )}
 
-        {stage === "idle" && !result && !error && (
+        {stage === "idle" && !result && !error && entryMode === "describe" && (
           <div className="empty-state">
             <HouseOutlineIcon />
             <h3>No plan yet</h3>
@@ -238,14 +324,14 @@ export default function Home() {
 
             <div className="toolbar">
               <div className="segmented">
-                {(["plan", "studio", "3d"] as ViewMode[]).map((mode) => (
+                {(["plan", "studio", "3d", "render"] as ViewMode[]).map((mode) => (
                   <button
                     key={mode}
                     type="button"
                     onClick={() => setViewMode(mode)}
                     className={`segmented-btn ${viewMode === mode ? "active" : ""}`}
                   >
-                    {mode === "plan" ? "View" : mode === "studio" ? "Edit (Studio)" : "3D view"}
+                    {mode === "plan" ? "View" : mode === "studio" ? "Edit (Studio)" : mode === "3d" ? "3D view" : "AI Render"}
                   </button>
                 ))}
               </div>
@@ -266,6 +352,20 @@ export default function Home() {
               </div>
             </div>
 
+            <div className="toolbar" style={{ marginTop: -6 }}>
+              <input
+                type="text"
+                className="text-input"
+                placeholder="Template name…"
+                value={saveTemplateName}
+                onChange={(e) => setSaveTemplateName(e.target.value)}
+                style={{ maxWidth: 220, padding: "6px 10px", fontSize: 13 }}
+              />
+              <button type="button" onClick={handleSaveTemplate} disabled={!saveTemplateName.trim()} className="btn btn-secondary btn-sm">
+                {templateSaved ? "Saved ✓" : "Save as template"}
+              </button>
+            </div>
+
             {plan.warnings.length > 0 && (
               <div className="alert alert-warning" style={{ marginBottom: 18 }}>
                 <AlertIcon />
@@ -277,10 +377,11 @@ export default function Home() {
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: viewMode === "studio" ? "1fr" : "1fr", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
               {viewMode === "plan" && <FloorPlanSvg plan={plan} />}
-              {viewMode === "studio" && <FloorPlanStudio plan={plan} onChange={setPlan} />}
+              {viewMode === "studio" && <FloorPlanStudio plan={plan} onChange={setPlan} traceImageUrl={traceImageUrl} />}
               {viewMode === "3d" && <FloorPlan3D plan={plan} />}
+              {viewMode === "render" && <AiRenderPanel plan={plan} />}
             </div>
 
             <div style={{ marginTop: 18 }}>
@@ -312,7 +413,7 @@ export default function Home() {
         )}
       </main>
 
-      <div className="container">
+      <div id="pricing" className="container">
         <PricingCta />
       </div>
 

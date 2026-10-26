@@ -48,7 +48,8 @@ export function PricingCta() {
         The generator, Studio editor, and PDF/DXF export above are free and open source (MIT) —
         self-host them yourself anytime. Pro is a hosted, supported version for teams who don&apos;t
         want to run it themselves: priority support, early access to new features, and you&apos;re
-        funding the roadmap directly (upload-existing-plan, AI rendering, furniture catalog).
+        funding the roadmap directly (human-validated plan uploads, premium-quality rendering, a
+        bigger furniture/materials catalog, and account-synced templates).
       </p>
       <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input
