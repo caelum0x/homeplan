@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { parseDescription } from "@/lib/parseDescription";
-import { generateFloorPlan } from "@/lib/layout/generate";
+import { generateFloorPlanOptions } from "@/lib/layout/generate";
 
 interface GenerateRequestBody {
   description?: unknown;
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   }
 
   const input = parseDescription(description);
-  const plan = generateFloorPlan(input);
+  const options = generateFloorPlanOptions(input);
 
-  return NextResponse.json({ input, plan });
+  return NextResponse.json({ input, options });
 }

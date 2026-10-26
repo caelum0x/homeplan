@@ -21,20 +21,61 @@ const TWO_ROW_PRIVATE_THRESHOLD = 3;
 /** Width:depth ratio beyond which a bedroom/bathroom reads as an unrealistic sliver, not a usable room. */
 const MAX_SANE_ROOM_ASPECT = 2.2;
 
+export interface LayoutVariant {
+  /** Stable key, also used as the React list key in the compare UI. */
+  id: string;
+  label: string;
+  description: string;
+  /** Multiplier applied to the engine's own computed baseline ratio (see computeBaselineAspectRatio) — never an absolute override, so a variant can never undo the deep-footprint anti-"bowling-alley-bedroom" fix below. */
+  ratioMultiplier: number;
+}
+
+/**
+ * Three genuinely different footprint shapes for the same program — Maket's
+ * "multiple layout variations" step, done honestly: every variant re-runs the
+ * *real* layout engine with a different width:depth ratio, so room counts,
+ * adjacency, wall/door placement and warnings all come out independently
+ * computed per variant (not one plan with cosmetic relabeling). Expressed as
+ * multipliers on the engine's own baseline (not fixed absolute ratios) so a
+ * 3+ bedroom brief still gets the deep/narrow anti-sliver-bedroom treatment
+ * in every variant, just scaled — e.g. "Compact" is deeper still, "Wide" is
+ * the least deep of the three but never reverts to a flat/unsafe ratio.
+ */
+export const LAYOUT_VARIANTS: LayoutVariant[] = [
+  { id: "compact", label: "Compact", description: "Closer to square — shorter exterior walls, tighter hallway.", ratioMultiplier: 0.75 },
+  { id: "classic", label: "Classic", description: "The engine's own balanced default proportion for this program.", ratioMultiplier: 1.0 },
+  { id: "wide", label: "Wide", description: "A broad street-facing front, shallower depth — ranch-style massing.", ratioMultiplier: 1.3 },
+];
+
+/**
+ * Picks the footprint width:depth ratio a plan should use by default: once the
+ * private zone needs 2 bedroom rows (3+ bedrooms/baths), a wide-and-shallow
+ * footprint forces whichever row has fewer rooms (typically the primary suite)
+ * to span nearly the full house width at a shallow depth — producing "bowling
+ * alley" bedrooms (e.g. 35' x 9'). A deeper, narrower footprint gives each row
+ * enough depth to keep rooms close to a sane proportion instead. Real finding
+ * from testing a real 3-bed/2-bath brief through the live app: this exact
+ * brief produced a 35.6' x 9.0' (320.8 sqft) "Primary Bedroom" before this fix.
+ */
+function computeBaselineAspectRatio(program: ReturnType<typeof buildRoomProgram>): number {
+  const privateRoomCount = program.bedrooms.length + program.privateBaths.length;
+  return privateRoomCount >= TWO_ROW_PRIVATE_THRESHOLD ? ASPECT_RATIO_DEEP : ASPECT_RATIO;
+}
+
 /**
  * The whole engine, end to end: parsed brief -> room program -> a real
  * rectangular-subdivision layout -> walls/doors derived from the actual
  * geometry. Nothing here is a template or a canned image — every number is
- * computed from `input`.
+ * computed from `input`. `aspectRatio` defaults to the engine's own computed
+ * baseline (see computeBaselineAspectRatio) when not explicitly passed.
  */
-export function generateFloorPlan(input: BriefInput): FloorPlan {
+export function generateFloorPlan(input: BriefInput, aspectRatio?: number): FloorPlan {
   const program = buildRoomProgram(input);
   const warnings: string[] = [];
 
   const interiorArea = input.sqft;
-  const privateRoomCount = program.bedrooms.length + program.privateBaths.length;
-  const aspectRatio = privateRoomCount >= TWO_ROW_PRIVATE_THRESHOLD ? ASPECT_RATIO_DEEP : ASPECT_RATIO;
-  const width = roundTo(Math.sqrt(interiorArea * aspectRatio), 0.5);
+  const resolvedAspectRatio = aspectRatio ?? computeBaselineAspectRatio(program);
+  const width = roundTo(Math.sqrt(interiorArea * resolvedAspectRatio), 0.5);
   const depth = roundTo(interiorArea / width, 0.5);
 
   const publicProgramRooms = [program.entry, ...program.publicRooms];
@@ -392,4 +433,25 @@ function round1(value: number): number {
  */
 function roundRoom(r: Room): Room {
   return { ...r, areaSqft: round1(r.areaSqft) };
+}
+
+export interface FloorPlanOption {
+  variant: LayoutVariant;
+  plan: FloorPlan;
+}
+
+/**
+ * Runs the real engine once per entry in LAYOUT_VARIANTS — real independent
+ * layouts, not a single plan styled 3 ways. Each variant's aspect ratio is
+ * the engine's own computed baseline for this exact program (see
+ * computeBaselineAspectRatio) scaled by that variant's multiplier, so the
+ * anti-"bowling-alley-bedroom" deep-footprint fix always applies.
+ */
+export function generateFloorPlanOptions(input: BriefInput): FloorPlanOption[] {
+  const program = buildRoomProgram(input);
+  const baseline = computeBaselineAspectRatio(program);
+  return LAYOUT_VARIANTS.map((variant) => ({
+    variant,
+    plan: generateFloorPlan(input, baseline * variant.ratioMultiplier),
+  }));
 }

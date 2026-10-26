@@ -40,18 +40,11 @@ export function PricingCta() {
   }
 
   return (
-    <section
-      style={{
-        marginTop: 40,
-        marginBottom: 24,
-        padding: "20px 24px",
-        border: "1px solid #e5e5e5",
-        borderRadius: 10,
-        background: "#fafafa",
-      }}
-    >
-      <h2 style={{ fontSize: 16, marginBottom: 4 }}>HomePlan Pro — $49/mo</h2>
-      <p style={{ fontSize: 13, color: "#555", marginBottom: 12, maxWidth: 560 }}>
+    <section className="card" style={{ marginTop: 48, marginBottom: 24, padding: 24 }}>
+      <h2 style={{ fontFamily: "var(--font-fraunces), serif", fontSize: 20, fontWeight: 650, marginBottom: 6 }}>
+        HomePlan Pro — $49/mo
+      </h2>
+      <p style={{ fontSize: 13.5, color: "var(--color-ink-soft)", marginBottom: 14, maxWidth: 560 }}>
         The generator, Studio editor, and PDF/DXF export above are free and open source (MIT) —
         self-host them yourself anytime. Pro is a hosted, supported version for teams who don&apos;t
         want to run it themselves: priority support, early access to new features, and you&apos;re
@@ -61,36 +54,18 @@ export function PricingCta() {
         <input
           type="email"
           required
+          className="text-input"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@firm.com"
-          style={{
-            flex: "1 1 220px",
-            padding: "8px 12px",
-            fontSize: 14,
-            borderRadius: 6,
-            border: "1px solid #ccc",
-          }}
+          style={{ flex: "1 1 220px" }}
         />
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            padding: "8px 16px",
-            fontSize: 14,
-            borderRadius: 6,
-            border: "none",
-            background: "#1f2937",
-            color: "#fff",
-            cursor: loading ? "default" : "pointer",
-            opacity: loading ? 0.7 : 1,
-          }}
-        >
+        <button type="submit" disabled={loading} className="btn btn-primary">
           {loading ? "Starting checkout…" : "Get HomePlan Pro"}
         </button>
       </form>
       {error && (
-        <p role="alert" style={{ color: "#b00020", fontSize: 13, marginTop: 8 }}>
+        <p role="alert" style={{ color: "var(--color-danger-text)", fontSize: 13, marginTop: 10 }}>
           {error}
         </p>
       )}
