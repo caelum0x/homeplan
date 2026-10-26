@@ -2,11 +2,36 @@
 
 import { useState } from "react";
 import { FloorPlanSvg } from "@/components/FloorPlanSvg";
+import { FloorPlanStudio } from "@/components/FloorPlanStudio";
+import { FloorPlan3D } from "@/components/FloorPlan3D";
 import type { BriefInput, FloorPlan } from "@/lib/layout/types";
 
 interface GenerateResponse {
   input: BriefInput;
   plan: FloorPlan;
+}
+
+type ViewMode = "plan" | "studio" | "3d";
+
+async function downloadExport(plan: FloorPlan, format: "pdf" | "dxf") {
+  const res = await fetch(`/api/export/${format}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plan }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Export failed (${res.status}).`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `homeplan-floor-plan.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 const EXAMPLES = [
@@ -18,8 +43,11 @@ const EXAMPLES = [
 export default function Home() {
   const [description, setDescription] = useState("");
   const [result, setResult] = useState<GenerateResponse | null>(null);
+  const [plan, setPlan] = useState<FloorPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("plan");
+  const [exporting, setExporting] = useState<"pdf" | "dxf" | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -35,13 +63,29 @@ export default function Home() {
       if (!res.ok) {
         setError(data.error ?? "Something went wrong.");
         setResult(null);
+        setPlan(null);
         return;
       }
       setResult(data);
+      setPlan(data.plan);
+      setViewMode("plan");
     } catch {
       setError("Could not reach the generator. Try again.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleExport(format: "pdf" | "dxf") {
+    if (!plan) return;
+    setExporting(format);
+    setError(null);
+    try {
+      await downloadExport(plan, format);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Could not export ${format.toUpperCase()}.`);
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -117,7 +161,7 @@ export default function Home() {
         </p>
       )}
 
-      {result && (
+      {result && plan && (
         <section>
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 16, fontSize: 14, color: "#444" }}>
             <span>
@@ -128,12 +172,40 @@ export default function Home() {
               {result.input.hasOffice ? ", office" : ""}
             </span>
             <span>
-              Footprint: <strong>{result.plan.footprint.w}&apos; × {result.plan.footprint.h}&apos;</strong> — total{" "}
-              <strong>{result.plan.totalAreaSqft} sqft</strong>
+              Footprint: <strong>{plan.footprint.w}&apos; × {plan.footprint.h}&apos;</strong> — total{" "}
+              <strong>{plan.totalAreaSqft} sqft</strong>
             </span>
           </div>
 
-          {result.plan.warnings.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            {(["plan", "studio", "3d"] as ViewMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                style={{
+                  padding: "6px 14px",
+                  fontSize: 13,
+                  borderRadius: 6,
+                  border: "1px solid #ddd",
+                  background: viewMode === mode ? "#1f2937" : "#fafafa",
+                  color: viewMode === mode ? "#fff" : "#333",
+                  cursor: "pointer",
+                }}
+              >
+                {mode === "plan" ? "View" : mode === "studio" ? "Edit (Studio)" : "3D view"}
+              </button>
+            ))}
+            <span style={{ flex: 1 }} />
+            <button type="button" onClick={() => handleExport("pdf")} disabled={exporting !== null} style={exportButtonStyle}>
+              {exporting === "pdf" ? "Exporting…" : "Export PDF"}
+            </button>
+            <button type="button" onClick={() => handleExport("dxf")} disabled={exporting !== null} style={exportButtonStyle}>
+              {exporting === "dxf" ? "Exporting…" : "Export DXF"}
+            </button>
+          </div>
+
+          {plan.warnings.length > 0 && (
             <ul
               style={{
                 background: "#fff8e1",
@@ -145,13 +217,15 @@ export default function Home() {
                 color: "#6b5900",
               }}
             >
-              {result.plan.warnings.map((w, i) => (
+              {plan.warnings.map((w, i) => (
                 <li key={i}>{w}</li>
               ))}
             </ul>
           )}
 
-          <FloorPlanSvg plan={result.plan} />
+          {viewMode === "plan" && <FloorPlanSvg plan={plan} />}
+          {viewMode === "studio" && <FloorPlanStudio plan={plan} onChange={setPlan} />}
+          {viewMode === "3d" && <FloorPlan3D plan={plan} />}
 
           <h2 style={{ fontSize: 16, marginTop: 24 }}>Rooms</h2>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -163,7 +237,7 @@ export default function Home() {
               </tr>
             </thead>
             <tbody>
-              {result.plan.rooms.map((r) => (
+              {plan.rooms.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                   <td style={{ padding: "6px 8px" }}>{r.label}</td>
                   <td style={{ padding: "6px 8px" }}>
@@ -186,3 +260,13 @@ export default function Home() {
     </main>
   );
 }
+
+const exportButtonStyle: React.CSSProperties = {
+  padding: "6px 14px",
+  fontSize: 13,
+  borderRadius: 6,
+  border: "1px solid #ddd",
+  background: "#fafafa",
+  color: "#333",
+  cursor: "pointer",
+};
