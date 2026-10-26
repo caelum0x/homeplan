@@ -1,4 +1,4 @@
-// Core data types for Planforge's floor plan generation engine.
+// Core data types for HomePlan's floor plan generation engine.
 // Everything here is plain, serializable data — no classes, no mutation.
 
 export type RoomType =

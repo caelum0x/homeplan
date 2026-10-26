@@ -48,7 +48,7 @@ export default function Home() {
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "32px 20px 80px", fontFamily: "var(--font-geist-sans), sans-serif" }}>
       <header style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, marginBottom: 4 }}>Planforge</h1>
+        <h1 style={{ fontSize: 28, marginBottom: 4 }}>HomePlan</h1>
         <p style={{ color: "#555", maxWidth: 640 }}>
           Open-source AI floor plan generator. Describe a home in plain language — bedroom/bathroom count,
           square footage, open-plan or not — and get a real, computed room layout with dimensions. No canned
@@ -179,8 +179,8 @@ export default function Home() {
 
       <footer style={{ marginTop: 60, fontSize: 12, color: "#999" }}>
         Open source (MIT) ·{" "}
-        <a href="https://github.com/caelum0x/planforge" style={{ color: "#999" }}>
-          github.com/caelum0x/planforge
+        <a href="https://github.com/caelum0x/homeplan" style={{ color: "#999" }}>
+          github.com/caelum0x/homeplan
         </a>
       </footer>
     </main>

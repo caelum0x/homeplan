@@ -1,4 +1,4 @@
-# Planforge
+# HomePlan
 
 An open-source, self-hostable alternative to [Maket.ai](https://www.maket.ai/) — describe a
 home in plain language and get a real, computed floor plan with room-by-room dimensions.
@@ -16,7 +16,7 @@ for real generated output (not mockups).
 Maket.ai does the same basic job (text → floor plan) but is closed-source, credit-metered
 (reviewers report burning a month's credits on one plan), and has well-documented spatial
 reasoning problems (a front door opening into the primary bedroom, in one reviewer's words).
-Planforge is MIT-licensed, has no credit meter, and makes every layout decision explicit and
+HomePlan is MIT-licensed, has no credit meter, and makes every layout decision explicit and
 inspectable in code — see `lib/layout/` for the actual rules (e.g. ensuite bathrooms are always
 paired with their bedroom and never routed through the hallway; a half bath only ever lands
 in the public zone, never next to a bedroom).

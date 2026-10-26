@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Planforge — open-source AI floor plan generator",
+  title: "HomePlan — open-source AI floor plan generator",
   description:
     "Describe a home in plain language and get a real, computed floor plan with room-by-room dimensions. Open source, self-hostable.",
 };
