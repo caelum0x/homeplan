@@ -56,6 +56,15 @@ const ROOM_COLOR: Partial<Record<RoomType, number>> = {
 
 interface FloorPlan3DProps {
   plan: FloorPlan;
+  /** Initial camera placement, as multiples of the plan's diagonal — defaults match the
+   * in-app massing view exactly. Only overridden by the marketing hero's static capture
+   * (a steeper, closer "dollhouse" framing), never by the real in-app Studio/3D tab. */
+  cameraRadiusFactor?: number;
+  cameraElevationFactor?: number;
+  /** Multiplier on the real 9ft wall height — defaults to 1 (the real in-app massing
+   * view). Only lowered by the marketing hero's static capture for a lighter, more
+   * open "dollhouse" read; never changes the real in-app Studio/3D tab. */
+  wallHeightFactor?: number;
 }
 
 /**
@@ -64,7 +73,12 @@ interface FloorPlan3DProps {
  * slab / wall / door gap has the actual coordinates from `plan`. Orbit
  * controls let the architect walk the camera around and look inside.
  */
-export function FloorPlan3D({ plan }: FloorPlan3DProps) {
+export function FloorPlan3D({
+  plan,
+  cameraRadiusFactor = 0.62,
+  cameraElevationFactor = 0.72,
+  wallHeightFactor = 1,
+}: FloorPlan3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "unsupported">("loading");
 
@@ -99,7 +113,7 @@ export function FloorPlan3D({ plan }: FloorPlan3DProps) {
     // clean 3/4 isometric massing render (flatter perspective distortion) while staying a real
     // perspective camera (no extra orthographic-camera plumbing needed for this honest massing view).
     const camera = new THREE.PerspectiveCamera(32, width / height, 0.1, 1000);
-    camera.position.set(centerX + diag * 0.62, diag * 0.72, centerZ + diag * 0.62);
+    camera.position.set(centerX + diag * cameraRadiusFactor, diag * cameraElevationFactor, centerZ + diag * cameraRadiusFactor);
 
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -140,13 +154,14 @@ export function FloorPlan3D({ plan }: FloorPlan3DProps) {
       const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
       if (length < 0.1) continue;
       const thickness = wall.exterior ? WALL_THICKNESS * 1.4 : WALL_THICKNESS;
-      const geo = new THREE.BoxGeometry(length, WALL_HEIGHT, thickness);
+      const wallHeight = WALL_HEIGHT * wallHeightFactor;
+      const geo = new THREE.BoxGeometry(length, wallHeight, thickness);
       const mat = new THREE.MeshStandardMaterial({ color: wall.exterior ? 0x8f8f8c : 0xbdbdb8 });
       const mesh = new THREE.Mesh(geo, mat);
       const midX = (wall.x1 + wall.x2) / 2;
       const midZ = (wall.y1 + wall.y2) / 2;
       const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-      mesh.position.set(midX, WALL_HEIGHT / 2, midZ);
+      mesh.position.set(midX, wallHeight / 2, midZ);
       mesh.rotation.y = -angle;
       scene.add(mesh);
     }
@@ -203,7 +218,7 @@ export function FloorPlan3D({ plan }: FloorPlan3DProps) {
       renderer.dispose();
       container.innerHTML = "";
     };
-  }, [plan]);
+  }, [plan, cameraRadiusFactor, cameraElevationFactor, wallHeightFactor]);
 
   return (
     <div>

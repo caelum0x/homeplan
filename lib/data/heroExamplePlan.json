@@ -1,0 +1,682 @@
+{
+  "footprint": {
+    "w": 38.5,
+    "h": 49.5
+  },
+  "totalAreaSqft": 1905.8,
+  "rooms": [
+    {
+      "id": "entry",
+      "type": "entry",
+      "label": "Entry",
+      "x": 0,
+      "y": 0,
+      "w": 4,
+      "h": 23.5,
+      "areaSqft": 94
+    },
+    {
+      "id": "living",
+      "type": "living",
+      "label": "Living Room",
+      "x": 4,
+      "y": 0,
+      "w": 10.483333333333334,
+      "h": 23.5,
+      "areaSqft": 246.4
+    },
+    {
+      "id": "kitchen",
+      "type": "kitchen",
+      "label": "Kitchen",
+      "x": 14.483333333333334,
+      "y": 0,
+      "w": 8.016666666666667,
+      "h": 23.5,
+      "areaSqft": 188.4
+    },
+    {
+      "id": "dining",
+      "type": "dining",
+      "label": "Dining Room",
+      "x": 22.5,
+      "y": 0,
+      "w": 8,
+      "h": 23.5,
+      "areaSqft": 188
+    },
+    {
+      "id": "office",
+      "type": "office",
+      "label": "Office",
+      "x": 30.5,
+      "y": 0,
+      "w": 8,
+      "h": 23.5,
+      "areaSqft": 188
+    },
+    {
+      "id": "bedroom_1",
+      "type": "primary_bedroom",
+      "label": "Primary Bedroom",
+      "x": 0,
+      "y": 39,
+      "w": 27.72,
+      "h": 10.5,
+      "areaSqft": 291.1
+    },
+    {
+      "id": "bedroom_2",
+      "type": "bedroom",
+      "label": "Bedroom 2",
+      "x": 0,
+      "y": 23.5,
+      "w": 16.210526315789473,
+      "h": 12,
+      "areaSqft": 194.5
+    },
+    {
+      "id": "bedroom_3",
+      "type": "bedroom",
+      "label": "Bedroom 3",
+      "x": 16.210526315789473,
+      "y": 23.5,
+      "w": 16.210526315789473,
+      "h": 12,
+      "areaSqft": 194.5
+    },
+    {
+      "id": "bath_primary",
+      "type": "primary_bath",
+      "label": "Primary Bath",
+      "x": 27.72,
+      "y": 39,
+      "w": 10.780000000000001,
+      "h": 10.5,
+      "areaSqft": 113.2
+    },
+    {
+      "id": "bath_shared_1",
+      "type": "bath",
+      "label": "Bathroom",
+      "x": 32.421052631578945,
+      "y": 23.5,
+      "w": 6.078947368421052,
+      "h": 12,
+      "areaSqft": 72.9
+    },
+    {
+      "id": "hallway",
+      "type": "hallway",
+      "label": "Hallway",
+      "x": 0,
+      "y": 35.5,
+      "w": 38.5,
+      "h": 3.5,
+      "areaSqft": 134.8
+    }
+  ],
+  "walls": [
+    {
+      "id": "wall_0",
+      "x1": 0,
+      "y1": 0,
+      "x2": 38.5,
+      "y2": 0,
+      "exterior": true
+    },
+    {
+      "id": "wall_1",
+      "x1": 0,
+      "y1": 49.5,
+      "x2": 38.5,
+      "y2": 49.5,
+      "exterior": true
+    },
+    {
+      "id": "wall_2",
+      "x1": 0,
+      "y1": 0,
+      "x2": 0,
+      "y2": 49.5,
+      "exterior": true
+    },
+    {
+      "id": "wall_3",
+      "x1": 38.5,
+      "y1": 0,
+      "x2": 38.5,
+      "y2": 49.5,
+      "exterior": true
+    },
+    {
+      "id": "wall_4",
+      "x1": 4,
+      "y1": 0,
+      "x2": 4,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_5",
+      "x1": 0,
+      "y1": 23.5,
+      "x2": 4,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_6",
+      "x1": 14.483333333333334,
+      "y1": 0,
+      "x2": 14.483333333333334,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_7",
+      "x1": 4,
+      "y1": 23.5,
+      "x2": 14.483333333333334,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_8",
+      "x1": 22.5,
+      "y1": 0,
+      "x2": 22.5,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_9",
+      "x1": 14.483333333333334,
+      "y1": 23.5,
+      "x2": 16.210526315789473,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_10",
+      "x1": 16.210526315789473,
+      "y1": 23.5,
+      "x2": 22.5,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_11",
+      "x1": 30.5,
+      "y1": 0,
+      "x2": 30.5,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_12",
+      "x1": 22.5,
+      "y1": 23.5,
+      "x2": 30.5,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_13",
+      "x1": 30.5,
+      "y1": 23.5,
+      "x2": 32.421052631578945,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_14",
+      "x1": 32.421052631578945,
+      "y1": 23.5,
+      "x2": 38.5,
+      "y2": 23.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_15",
+      "x1": 27.72,
+      "y1": 39,
+      "x2": 27.72,
+      "y2": 49.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_16",
+      "x1": 0,
+      "y1": 39,
+      "x2": 27.72,
+      "y2": 39,
+      "exterior": false
+    },
+    {
+      "id": "wall_17",
+      "x1": 16.210526315789473,
+      "y1": 23.5,
+      "x2": 16.210526315789473,
+      "y2": 35.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_18",
+      "x1": 0,
+      "y1": 35.5,
+      "x2": 16.210526315789473,
+      "y2": 35.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_19",
+      "x1": 32.421052631578945,
+      "y1": 23.5,
+      "x2": 32.421052631578945,
+      "y2": 35.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_20",
+      "x1": 16.210526315789473,
+      "y1": 35.5,
+      "x2": 32.421052631578945,
+      "y2": 35.5,
+      "exterior": false
+    },
+    {
+      "id": "wall_21",
+      "x1": 27.72,
+      "y1": 39,
+      "x2": 38.5,
+      "y2": 39,
+      "exterior": false
+    },
+    {
+      "id": "wall_22",
+      "x1": 32.421052631578945,
+      "y1": 35.5,
+      "x2": 38.5,
+      "y2": 35.5,
+      "exterior": false
+    }
+  ],
+  "doors": [
+    {
+      "id": "door_0",
+      "x": 4,
+      "y": 11.75,
+      "orientation": "v",
+      "width": 3,
+      "connects": [
+        "entry",
+        "living"
+      ]
+    },
+    {
+      "id": "door_1",
+      "x": 14.483333333333334,
+      "y": 11.75,
+      "orientation": "v",
+      "width": 3,
+      "connects": [
+        "living",
+        "kitchen"
+      ]
+    },
+    {
+      "id": "door_2",
+      "x": 22.5,
+      "y": 11.75,
+      "orientation": "v",
+      "width": 3,
+      "connects": [
+        "kitchen",
+        "dining"
+      ]
+    },
+    {
+      "id": "door_3",
+      "x": 30.5,
+      "y": 11.75,
+      "orientation": "v",
+      "width": 3,
+      "connects": [
+        "dining",
+        "office"
+      ]
+    },
+    {
+      "id": "door_4",
+      "x": 8.105263157894736,
+      "y": 35.5,
+      "orientation": "h",
+      "width": 3,
+      "connects": [
+        "bedroom_2",
+        "hallway"
+      ]
+    },
+    {
+      "id": "door_5",
+      "x": 24.31578947368421,
+      "y": 35.5,
+      "orientation": "h",
+      "width": 3,
+      "connects": [
+        "bedroom_3",
+        "hallway"
+      ]
+    },
+    {
+      "id": "door_6",
+      "x": 35.46052631578947,
+      "y": 35.5,
+      "orientation": "h",
+      "width": 3,
+      "connects": [
+        "bath_shared_1",
+        "hallway"
+      ]
+    },
+    {
+      "id": "door_7",
+      "x": 13.86,
+      "y": 39,
+      "orientation": "h",
+      "width": 3,
+      "connects": [
+        "bedroom_1",
+        "hallway"
+      ]
+    },
+    {
+      "id": "door_8",
+      "x": 27.72,
+      "y": 44.25,
+      "orientation": "v",
+      "width": 3,
+      "connects": [
+        "bedroom_1",
+        "bath_primary"
+      ]
+    },
+    {
+      "id": "front_door",
+      "x": 2,
+      "y": 0,
+      "orientation": "h",
+      "width": 3,
+      "connects": [
+        "exterior",
+        "entry"
+      ]
+    }
+  ],
+  "warnings": [
+    "Primary Bedroom is an unrealistic shape for its area (27.7' × 10.5', 2.6:1) — increase total sqft or reduce room count so it can be laid out as a usable room."
+  ],
+  "furniture": [
+    {
+      "id": "furn_1793049484738_0",
+      "type": "sofa",
+      "label": "Sofa",
+      "x": 4.4,
+      "y": 3.3,
+      "w": 7,
+      "h": 3,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_1",
+      "type": "coffee_table",
+      "label": "Coffee Table",
+      "x": 4.4,
+      "y": 21.1,
+      "w": 3.5,
+      "h": 2,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_2",
+      "type": "tv_stand",
+      "label": "TV Stand",
+      "x": 4.4,
+      "y": 21.8,
+      "w": 4.5,
+      "h": 1.3,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_3",
+      "type": "rug",
+      "label": "Rug",
+      "x": 4.4,
+      "y": 19.1,
+      "w": 6,
+      "h": 4,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_4",
+      "type": "kitchen_island",
+      "label": "Island",
+      "x": 14.883333333333335,
+      "y": 3.3,
+      "w": 5.5,
+      "h": 3,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_5",
+      "type": "fridge",
+      "label": "Fridge",
+      "x": 14.883333333333335,
+      "y": 20.5,
+      "w": 2.8,
+      "h": 2.6,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_6",
+      "type": "stove",
+      "label": "Stove",
+      "x": 14.883333333333335,
+      "y": 20.900000000000002,
+      "w": 2.5,
+      "h": 2.2,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_7",
+      "type": "dining_table",
+      "label": "Dining Table",
+      "x": 22.9,
+      "y": 3.3,
+      "w": 5.5,
+      "h": 3.2,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_8",
+      "type": "desk",
+      "label": "Desk",
+      "x": 30.9,
+      "y": 3.3,
+      "w": 4.5,
+      "h": 2.2,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_9",
+      "type": "office_chair",
+      "label": "Office Chair",
+      "x": 35.8,
+      "y": 3.3,
+      "w": 1.8,
+      "h": 1.8,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_10",
+      "type": "bookshelf",
+      "label": "Bookshelf",
+      "x": 30.9,
+      "y": 22,
+      "w": 3,
+      "h": 1.1,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_11",
+      "type": "bed_queen",
+      "label": "Queen Bed",
+      "x": 0.4,
+      "y": 42.3,
+      "w": 5,
+      "h": 6.5,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_12",
+      "type": "nightstand",
+      "label": "Nightstand",
+      "x": 5.800000000000001,
+      "y": 42.3,
+      "w": 1.6,
+      "h": 1.6,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_13",
+      "type": "wardrobe",
+      "label": "Wardrobe",
+      "x": 7.800000000000001,
+      "y": 42.3,
+      "w": 4,
+      "h": 2,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_14",
+      "type": "bed_queen",
+      "label": "Queen Bed",
+      "x": 0.4,
+      "y": 26.8,
+      "w": 5,
+      "h": 6.5,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_15",
+      "type": "nightstand",
+      "label": "Nightstand",
+      "x": 5.800000000000001,
+      "y": 26.8,
+      "w": 1.6,
+      "h": 1.6,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_16",
+      "type": "wardrobe",
+      "label": "Wardrobe",
+      "x": 7.800000000000001,
+      "y": 26.8,
+      "w": 4,
+      "h": 2,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_17",
+      "type": "bed_queen",
+      "label": "Queen Bed",
+      "x": 16.61052631578947,
+      "y": 26.8,
+      "w": 5,
+      "h": 6.5,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_18",
+      "type": "nightstand",
+      "label": "Nightstand",
+      "x": 22.01052631578947,
+      "y": 26.8,
+      "w": 1.6,
+      "h": 1.6,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_19",
+      "type": "wardrobe",
+      "label": "Wardrobe",
+      "x": 24.01052631578947,
+      "y": 26.8,
+      "w": 4,
+      "h": 2,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_20",
+      "type": "toilet",
+      "label": "Toilet",
+      "x": 28.119999999999997,
+      "y": 42.3,
+      "w": 1.6,
+      "h": 2.3,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_21",
+      "type": "sink_bath",
+      "label": "Vanity Sink",
+      "x": 30.119999999999997,
+      "y": 42.3,
+      "w": 2,
+      "h": 1.6,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_22",
+      "type": "bathtub",
+      "label": "Bathtub",
+      "x": 32.519999999999996,
+      "y": 42.3,
+      "w": 2.6,
+      "h": 5,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_23",
+      "type": "toilet",
+      "label": "Toilet",
+      "x": 32.821052631578944,
+      "y": 26.8,
+      "w": 1.6,
+      "h": 2.3,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_24",
+      "type": "sink_bath",
+      "label": "Vanity Sink",
+      "x": 34.821052631578944,
+      "y": 26.8,
+      "w": 2,
+      "h": 1.6,
+      "rotation": 0
+    },
+    {
+      "id": "furn_1793049484738_25",
+      "type": "bathtub",
+      "label": "Bathtub",
+      "x": 32.821052631578944,
+      "y": 30.1,
+      "w": 2.6,
+      "h": 5,
+      "rotation": 0
+    }
+  ]
+}

@@ -16,6 +16,15 @@ import type { FloorPlanOption } from "@/lib/layout/generate";
 import { downloadPlanAsPng } from "@/lib/exportPng";
 import { buildShareUrl, readPlanFromLocation } from "@/lib/sharePlan";
 import { saveTemplate } from "@/lib/templates";
+import heroExamplePlanData from "@/lib/data/heroExamplePlan.json";
+
+// Real engine output (3 bed, 2 bath, home office — see plans/homeplan.md for how this
+// was generated and captured), committed as static data so the hero's product card
+// shows the exact same plan as public/hero-3d.png, byte-for-byte, and so this page
+// never needs to call the layout engine (whose furniture IDs use Date.now(), which
+// Next's static prerendering of this page correctly disallows at render time) just to
+// render a label.
+const heroExample = heroExamplePlanData as FloorPlan;
 
 interface GenerateResponse {
   input: BriefInput;
@@ -67,6 +76,9 @@ export default function Home() {
   const [traceImageUrl, setTraceImageUrl] = useState<string | null>(null);
   const [saveTemplateName, setSaveTemplateName] = useState("");
   const [templateSaved, setTemplateSaved] = useState(false);
+
+  const heroBedCount = heroExample.rooms.filter((r) => r.type === "bedroom" || r.type === "primary_bedroom").length;
+  const heroBathCount = heroExample.rooms.filter((r) => r.type === "bath" || r.type === "primary_bath" || r.type === "half_bath").length;
 
   // A shared link (?plan=...) opens straight into the editor with that exact plan.
   useEffect(() => {
@@ -148,6 +160,13 @@ export default function Home() {
     setStage("editing");
   }
 
+  // Hero product card's real "Open in Studio" action — opens the exact same real plan
+  // shown in public/hero-3d.png (same brief, same engine), the same way picking a
+  // template does. Not decorative chrome: it's a genuine working control.
+  function handleOpenHeroExample() {
+    handleTemplateSelect(heroExample, "Example plan");
+  }
+
   async function handleUploadSubmit(uploadDescription: string, imageDataUrl: string | null) {
     setStage("loading");
     setError(null);
@@ -216,6 +235,42 @@ export default function Home() {
           <span className="hero-eyebrow">Open source</span>
           <h1>From a sentence to a buildable floor plan</h1>
           <p>Real computed rooms, walls, and doors. Free exports, no credit limits, self-hostable.</p>
+
+          <div className="hero-product-card">
+            <div className="hero-product-topbar">
+              <span>Example · 3D massing view</span>
+              <button type="button" onClick={handleOpenHeroExample} className="hero-product-open">
+                Open in Studio
+                <ArrowIcon />
+              </button>
+            </div>
+            <div className="hero-product-image-wrap">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/hero-3d.png"
+                alt="A real HomePlan-generated floor plan shown as a 3D massing view with furniture"
+                className="hero-product-image"
+              />
+              <span className="dim-line dim-line-bottom" aria-hidden="true">
+                <span className="dim-label">{heroExample.footprint.w.toFixed(1)} ft</span>
+              </span>
+              <span className="dim-line dim-line-right" aria-hidden="true">
+                <span className="dim-label">{heroExample.footprint.h.toFixed(1)} ft</span>
+              </span>
+            </div>
+          </div>
+
+          <p className="hero-meta-line">
+            {heroBedCount} bed &middot; {heroBathCount} bath &middot; {Math.round(heroExample.totalAreaSqft).toLocaleString()} sqft &mdash; generated
+            instantly, free
+          </p>
+
+          <a href="#generator" className="btn btn-primary btn-pill">
+            Generate your own
+            <span className="icon-circle">
+              <ArrowIcon />
+            </span>
+          </a>
         </section>
 
         <div id="generator" className="card generator-card">
