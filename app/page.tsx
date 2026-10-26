@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FloorPlanSvg } from "@/components/FloorPlanSvg";
 import { FloorPlanStudio } from "@/components/FloorPlanStudio";
 import { FloorPlan3D } from "@/components/FloorPlan3D";
+import { PricingCta } from "@/components/PricingCta";
 import type { BriefInput, FloorPlan } from "@/lib/layout/types";
 
 interface GenerateResponse {
@@ -250,6 +251,8 @@ export default function Home() {
           </table>
         </section>
       )}
+
+      <PricingCta />
 
       <footer style={{ marginTop: 60, fontSize: 12, color: "#999" }}>
         Open source (MIT) ·{" "}

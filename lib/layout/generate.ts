@@ -6,6 +6,20 @@ const HALLWAY_WIDTH = 3.5;
 const DOOR_WIDTH = 3;
 /** Width : depth ratio for the main footprint — a mild rectangle, not a square or a shoebox. */
 const ASPECT_RATIO = 1.35;
+/**
+ * Once the private zone needs 2 bedroom rows (3+ bedrooms/baths), a wide-and-shallow
+ * footprint forces whichever row has fewer rooms (typically the primary suite) to span
+ * nearly the full house width at a shallow depth — producing "bowling alley" bedrooms
+ * (e.g. 35' x 9'). A deeper, narrower footprint gives each row enough depth to keep
+ * rooms close to a sane proportion instead. Real finding from testing a real 3-bed/2-bath
+ * brief through the live app: this exact brief produced a 35.6' x 9.0' (320.8 sqft)
+ * "Primary Bedroom" before this fix — a shape no real architect would accept.
+ */
+const ASPECT_RATIO_DEEP = 0.78;
+/** Private-room count (bedrooms + private baths) at which layoutPrivateZone switches to 2 rows. */
+const TWO_ROW_PRIVATE_THRESHOLD = 3;
+/** Width:depth ratio beyond which a bedroom/bathroom reads as an unrealistic sliver, not a usable room. */
+const MAX_SANE_ROOM_ASPECT = 2.2;
 
 /**
  * The whole engine, end to end: parsed brief -> room program -> a real
@@ -18,7 +32,9 @@ export function generateFloorPlan(input: BriefInput): FloorPlan {
   const warnings: string[] = [];
 
   const interiorArea = input.sqft;
-  const width = roundTo(Math.sqrt(interiorArea * ASPECT_RATIO), 0.5);
+  const privateRoomCount = program.bedrooms.length + program.privateBaths.length;
+  const aspectRatio = privateRoomCount >= TWO_ROW_PRIVATE_THRESHOLD ? ASPECT_RATIO_DEEP : ASPECT_RATIO;
+  const width = roundTo(Math.sqrt(interiorArea * aspectRatio), 0.5);
   const depth = roundTo(interiorArea / width, 0.5);
 
   const publicProgramRooms = [program.entry, ...program.publicRooms];
@@ -102,6 +118,7 @@ export function generateFloorPlan(input: BriefInput): FloorPlan {
   });
 
   checkMinimums(rooms, warnings);
+  checkAspectRatios(rooms, warnings);
 
   const totalAreaSqft = round1(rooms.reduce((s, r) => s + r.areaSqft, 0));
 
@@ -319,6 +336,28 @@ function buildWallsAndDoors(
   return { walls, doors };
 }
 
+/** Room types where a long, shallow shape is a real bug, not a normal open-plan room. */
+const ASPECT_CHECKED_TYPES = new Set(["primary_bedroom", "bedroom", "primary_bath", "bath", "half_bath", "closet"]);
+
+/**
+ * Open-plan great rooms/kitchens/entries are legitimately long and shallow in real houses —
+ * only flag bedrooms/bathrooms, where a sliver-shaped room (e.g. 35' x 9') is never realistic
+ * and would make a real architect bounce. Surfaced as the same kind of honest, computed
+ * warning as `checkMinimums`, never silently shipped as if it were fine.
+ */
+function checkAspectRatios(rooms: Room[], warnings: string[]) {
+  for (const room of rooms) {
+    if (!ASPECT_CHECKED_TYPES.has(room.type)) continue;
+    const long = Math.max(room.w, room.h);
+    const short = Math.min(room.w, room.h);
+    if (short > 0 && long / short > MAX_SANE_ROOM_ASPECT) {
+      warnings.push(
+        `${room.label} is an unrealistic shape for its area (${round1(room.w)}' × ${round1(room.h)}', ${round1(long / short)}:1) — increase total sqft or reduce room count so it can be laid out as a usable room.`,
+      );
+    }
+  }
+}
+
 function checkMinimums(rooms: Room[], warnings: string[]) {
   for (const room of rooms) {
     if (room.type === "hallway") continue;
@@ -339,6 +378,18 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+/**
+ * Real bug found and fixed while verifying the aspect-ratio fix above: rounding each room's
+ * x/y/w/h to 0.1ft *independently* can shift two adjacent rooms' shared edge apart by up to
+ * 0.1ft in opposite directions, producing a spurious ~1-2 sqft "rooms overlap" warning in the
+ * Studio editor (`lib/layout/edit.ts`'s `checkOverlaps`, 0.5 sqft threshold) on a plan the user
+ * never touched — confirmed via `npm run verify` on a real "4 bed 3 bath, 2200 sqft, garage,
+ * office" brief. Every render/export surface already calls `.toFixed(1)` on `room.w`/`room.h`
+ * for display (`lib/renderSvg.ts`, `components/FloorPlanSvg.tsx`, `FloorPlanStudio.tsx`,
+ * `app/page.tsx`, `exportPdf.ts`, `exportDxf.ts`), so rounding the stored coordinates bought
+ * nothing and only broke exactness. Keep full precision on x/y/w/h; only `areaSqft` (a derived,
+ * already-rounded display number, not a coordinate two rooms must agree on) stays rounded.
+ */
 function roundRoom(r: Room): Room {
-  return { ...r, x: round1(r.x), y: round1(r.y), w: round1(r.w), h: round1(r.h), areaSqft: round1(r.areaSqft) };
+  return { ...r, areaSqft: round1(r.areaSqft) };
 }

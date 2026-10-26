@@ -1,0 +1,47 @@
+import { createProCheckout, loadDodoEnv } from "@/lib/dodo";
+
+/** RFC 5322-ish, deliberately simple — just enough to reject garbage before it reaches Dodo. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function absoluteOrigin(request: Request): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (envUrl) return envUrl.replace(/\/$/, "");
+  return new URL(request.url).origin;
+}
+
+export async function POST(request: Request): Promise<Response> {
+  const env = loadDodoEnv();
+  if (!env) {
+    return Response.json(
+      { error: "Checkout isn't configured on this deployment yet. Email hello@homeplan.dev and we'll set you up manually." },
+      { status: 503 },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  if (!body || typeof body !== "object") {
+    return Response.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const email = (body as { email?: unknown }).email;
+  if (typeof email !== "string" || email.length > 254 || !EMAIL_RE.test(email)) {
+    return Response.json({ error: "Enter a valid email address." }, { status: 400 });
+  }
+
+  try {
+    const origin = absoluteOrigin(request);
+    const session = await createProCheckout(env, {
+      email,
+      returnUrl: `${origin}/pro/success`,
+    });
+    return Response.json({ checkoutUrl: session.checkoutUrl });
+  } catch (error) {
+    console.error("HomePlan Pro checkout failed:", error instanceof Error ? error.message : error);
+    return Response.json({ error: "Could not start checkout. Try again in a moment." }, { status: 502 });
+  }
+}
