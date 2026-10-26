@@ -143,14 +143,14 @@ export function FloorPlanStudio({ plan, onChange }: FloorPlanStudioProps) {
   return (
     <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
       <div style={{ flex: "1 1 480px", minWidth: 320 }}>
-        <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
-          <button type="button" onClick={handleAddRoom} style={studioButtonStyle}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center" }}>
+          <button type="button" onClick={handleAddRoom} className="btn btn-secondary btn-sm">
             + Add room
           </button>
-          <button type="button" onClick={undo} disabled={history.length === 0} style={studioButtonStyle}>
+          <button type="button" onClick={undo} disabled={history.length === 0} className="btn btn-secondary btn-sm">
             Undo
           </button>
-          <span style={{ fontSize: 12, color: "#888" }}>Drag a room to move it, drag the corner handle to resize.</span>
+          <span style={{ fontSize: 12.5, color: "var(--color-ink-faint)" }}>Drag a room to move it, drag the corner handle to resize.</span>
         </div>
 
         <svg
@@ -159,7 +159,8 @@ export function FloorPlanStudio({ plan, onChange }: FloorPlanStudioProps) {
           width="100%"
           role="img"
           aria-label="Editable floor plan"
-          style={{ background: "#fff", borderRadius: 8, border: "1px solid #e2e2e2", touchAction: "none" }}
+          className="card"
+          style={{ background: "#fff", touchAction: "none" }}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerDown={() => setSelectedId(null)}
@@ -173,39 +174,42 @@ export function FloorPlanStudio({ plan, onChange }: FloorPlanStudioProps) {
                   width={toPx(room.w)}
                   height={toPx(room.h)}
                   fill={ROOM_FILL[room.type] ?? "#f0f0f0"}
-                  stroke={room.id === selectedId ? "#2563eb" : "#c9c9c9"}
+                  stroke={room.id === selectedId ? "#c9622d" : "#c9c9c9"}
                   strokeWidth={room.id === selectedId ? 2 : 1}
                   style={{ cursor: "move" }}
                   onPointerDown={(e) => onRoomPointerDown(room, e)}
                 />
-                <text
-                  x={toPx(room.x) + toPx(room.w) / 2}
-                  y={toPx(room.y) + toPx(room.h) / 2 - 6}
-                  textAnchor="middle"
-                  fontSize={Math.min(13, Math.max(9, toPx(room.w) / 10))}
-                  fontWeight={600}
-                  fill="#2b2b2b"
-                  style={{ pointerEvents: "none" }}
-                >
-                  {room.label}
-                </text>
-                <text
-                  x={toPx(room.x) + toPx(room.w) / 2}
-                  y={toPx(room.y) + toPx(room.h) / 2 + 10}
-                  textAnchor="middle"
-                  fontSize={Math.max(7, Math.min(11, toPx(room.w) / 10) - 2)}
-                  fill="#5a5a5a"
-                  style={{ pointerEvents: "none" }}
-                >
-                  {room.w.toFixed(1)}&apos; × {room.h.toFixed(1)}&apos; ({room.areaSqft} sqft)
-                </text>
+                <clipPath id={`clip_${room.id}`}>
+                  <rect x={toPx(room.x)} y={toPx(room.y)} width={toPx(room.w)} height={toPx(room.h)} />
+                </clipPath>
+                <g clipPath={`url(#clip_${room.id})`} style={{ pointerEvents: "none" }}>
+                  <text
+                    x={toPx(room.x) + toPx(room.w) / 2}
+                    y={toPx(room.y) + toPx(room.h) / 2 - 6}
+                    textAnchor="middle"
+                    fontSize={Math.min(13, Math.max(9, toPx(room.w) / 10))}
+                    fontWeight={600}
+                    fill="#2b2b2b"
+                  >
+                    {room.label}
+                  </text>
+                  <text
+                    x={toPx(room.x) + toPx(room.w) / 2}
+                    y={toPx(room.y) + toPx(room.h) / 2 + 10}
+                    textAnchor="middle"
+                    fontSize={Math.max(7, Math.min(11, toPx(room.w) / 10) - 2)}
+                    fill="#5a5a5a"
+                  >
+                    {room.w.toFixed(1)}&apos; × {room.h.toFixed(1)}&apos; ({room.areaSqft} sqft)
+                  </text>
+                </g>
                 {room.id === selectedId && (
                   <rect
                     x={toPx(room.x) + toPx(room.w) - 8}
                     y={toPx(room.y) + toPx(room.h) - 8}
                     width={12}
                     height={12}
-                    fill="#2563eb"
+                    fill="#c9622d"
                     style={{ cursor: "nwse-resize" }}
                     onPointerDown={(e) => onHandlePointerDown(room, e)}
                   />
@@ -241,41 +245,37 @@ export function FloorPlanStudio({ plan, onChange }: FloorPlanStudioProps) {
         </svg>
 
         {plan.warnings.length > 0 && (
-          <ul
-            style={{
-              background: "#fff8e1",
-              border: "1px solid #ffe8a3",
-              borderRadius: 8,
-              padding: "10px 16px",
-              marginTop: 8,
-              fontSize: 13,
-              color: "#6b5900",
-            }}
-          >
-            {plan.warnings.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
+          <div className="alert alert-warning" style={{ marginTop: 10 }}>
+            <ul>
+              {plan.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
 
-      <div style={{ flex: "0 0 220px", fontSize: 13 }}>
-        <h3 style={{ fontSize: 14, marginBottom: 8 }}>Selected room</h3>
-        {!selected && <p style={{ color: "#888" }}>Click a room to select it.</p>}
+      <div className="panel" style={{ flex: "0 0 240px", padding: 14, fontSize: 13, alignSelf: "flex-start" }}>
+        <h3 style={{ fontSize: 14, fontWeight: 650, marginBottom: 10 }}>Selected room</h3>
+        {!selected && <p style={{ color: "var(--color-ink-faint)" }}>Click a room to select it.</p>}
         {selected && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <label style={labelStyle}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <label className="field-group">
               Label
               <input
                 type="text"
+                className="text-input"
                 value={selected.label}
                 onChange={(e) => handleRename(e.target.value, selected.type)}
-                style={inputStyle}
               />
             </label>
-            <label style={labelStyle}>
+            <label className="field-group">
               Type
-              <select value={selected.type} onChange={(e) => handleRename(selected.label, e.target.value as RoomType)} style={inputStyle}>
+              <select
+                className="select-input"
+                value={selected.type}
+                onChange={(e) => handleRename(selected.label, e.target.value as RoomType)}
+              >
                 {ROOM_TYPE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
@@ -284,51 +284,51 @@ export function FloorPlanStudio({ plan, onChange }: FloorPlanStudioProps) {
               </select>
             </label>
             <div style={{ display: "flex", gap: 8 }}>
-              <label style={labelStyle}>
+              <label className="field-group">
                 X (ft)
                 <input
                   type="number"
+                  className="text-input"
                   value={selected.x}
                   onChange={(e) => handleNumericChange("x", Number(e.target.value))}
                   onBlur={handleNumericCommit}
-                  style={inputStyle}
                 />
               </label>
-              <label style={labelStyle}>
+              <label className="field-group">
                 Y (ft)
                 <input
                   type="number"
+                  className="text-input"
                   value={selected.y}
                   onChange={(e) => handleNumericChange("y", Number(e.target.value))}
                   onBlur={handleNumericCommit}
-                  style={inputStyle}
                 />
               </label>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <label style={labelStyle}>
+              <label className="field-group">
                 Width (ft)
                 <input
                   type="number"
+                  className="text-input"
                   value={selected.w}
                   onChange={(e) => handleNumericChange("w", Number(e.target.value))}
                   onBlur={handleNumericCommit}
-                  style={inputStyle}
                 />
               </label>
-              <label style={labelStyle}>
+              <label className="field-group">
                 Depth (ft)
                 <input
                   type="number"
+                  className="text-input"
                   value={selected.h}
                   onChange={(e) => handleNumericChange("h", Number(e.target.value))}
                   onBlur={handleNumericCommit}
-                  style={inputStyle}
                 />
               </label>
             </div>
-            <p style={{ color: "#555" }}>{selected.areaSqft} sqft</p>
-            <button type="button" onClick={handleDeleteSelected} style={{ ...studioButtonStyle, background: "#fee2e2", color: "#991b1b" }}>
+            <p style={{ color: "var(--color-ink-soft)" }}>{selected.areaSqft} sqft</p>
+            <button type="button" onClick={handleDeleteSelected} className="btn btn-danger btn-sm">
               Delete room
             </button>
           </div>
@@ -337,29 +337,3 @@ export function FloorPlanStudio({ plan, onChange }: FloorPlanStudioProps) {
     </div>
   );
 }
-
-const studioButtonStyle: React.CSSProperties = {
-  padding: "6px 12px",
-  fontSize: 13,
-  borderRadius: 6,
-  border: "1px solid #ddd",
-  background: "#fafafa",
-  cursor: "pointer",
-  color: "#333",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 4,
-  fontSize: 12,
-  color: "#555",
-  flex: 1,
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: "5px 8px",
-  fontSize: 13,
-  borderRadius: 6,
-  border: "1px solid #ccc",
-};

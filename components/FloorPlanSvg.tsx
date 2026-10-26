@@ -17,7 +17,8 @@ export function FloorPlanSvg({ plan }: FloorPlanSvgProps) {
       width="100%"
       role="img"
       aria-label={`Generated floor plan, ${plan.footprint.w} by ${plan.footprint.h} feet, ${plan.totalAreaSqft} square feet total`}
-      style={{ background: "#fff", borderRadius: 8, border: "1px solid #e2e2e2" }}
+      className="card"
+      style={{ background: "#fff" }}
     >
       <g transform={`translate(${PADDING}, ${PADDING})`}>
         {plan.rooms.map((room) => (
@@ -52,15 +53,22 @@ function RoomRect({ room, toPx }: { room: Room; toPx: (ft: number) => number }) 
   const h = toPx(room.h);
   const fontSize = Math.min(13, Math.max(9, w / 10));
 
+  const clipId = `clip_${room.id}`;
+
   return (
     <g>
       <rect x={x} y={y} width={w} height={h} fill={ROOM_FILL[room.type] ?? "#f0f0f0"} stroke="#c9c9c9" strokeWidth={1} />
-      <text x={x + w / 2} y={y + h / 2 - 6} textAnchor="middle" fontSize={fontSize} fontWeight={600} fill="#2b2b2b">
-        {room.label}
-      </text>
-      <text x={x + w / 2} y={y + h / 2 + 10} textAnchor="middle" fontSize={fontSize - 2} fill="#5a5a5a">
-        {room.w.toFixed(1)}&apos; × {room.h.toFixed(1)}&apos; ({room.areaSqft} sqft)
-      </text>
+      <clipPath id={clipId}>
+        <rect x={x} y={y} width={w} height={h} />
+      </clipPath>
+      <g clipPath={`url(#${clipId})`}>
+        <text x={x + w / 2} y={y + h / 2 - 6} textAnchor="middle" fontSize={fontSize} fontWeight={600} fill="#2b2b2b">
+          {room.label}
+        </text>
+        <text x={x + w / 2} y={y + h / 2 + 10} textAnchor="middle" fontSize={fontSize - 2} fill="#5a5a5a">
+          {room.w.toFixed(1)}&apos; × {room.h.toFixed(1)}&apos; ({room.areaSqft} sqft)
+        </text>
+      </g>
     </g>
   );
 }

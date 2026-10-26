@@ -72,11 +72,17 @@ function roomToSvg(room: Room, toPx: (ft: number) => number): string {
   const fill = ROOM_FILL[room.type] ?? "#f0f0f0";
   const label = escapeXml(room.label);
   const dims = `${room.w.toFixed(1)}' x ${room.h.toFixed(1)}' (${room.areaSqft} sqft)`;
+  // Clip text to the room's own rect so a narrow room (e.g. a 4ft entry strip)
+  // never bleeds its label/dimensions into the room next to it.
+  const clipId = `clip_${room.id}`;
 
   return [
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="#c9c9c9" stroke-width="1" />`,
+    `<clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${w}" height="${h}" /></clipPath>`,
+    `<g clip-path="url(#${clipId})">`,
     `<text x="${x + w / 2}" y="${y + h / 2 - 6}" text-anchor="middle" font-size="${fontSize}" font-weight="600" fill="#2b2b2b">${label}</text>`,
     `<text x="${x + w / 2}" y="${y + h / 2 + 10}" text-anchor="middle" font-size="${fontSize - 2}" fill="#5a5a5a">${escapeXml(dims)}</text>`,
+    `</g>`,
   ].join("\n");
 }
 

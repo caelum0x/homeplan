@@ -179,27 +179,26 @@ export function FloorPlan3D({ plan }: FloorPlan3DProps) {
     <div>
       <div
         ref={containerRef}
+        className="card"
         style={{
           width: "100%",
           height: 520,
-          borderRadius: 8,
           overflow: "hidden",
-          border: "1px solid #e2e2e2",
           display: status === "unsupported" ? "flex" : "block",
           alignItems: "center",
           justifyContent: "center",
-          background: status === "unsupported" ? "#fafafa" : undefined,
+          background: status === "unsupported" ? "var(--color-surface-sunken)" : undefined,
         }}
       >
         {status === "unsupported" && (
-          <p style={{ fontSize: 13, color: "#777", textAlign: "center", maxWidth: 360, padding: 16 }}>
+          <p style={{ fontSize: 13, color: "var(--color-ink-soft)", textAlign: "center", maxWidth: 360, padding: 16 }}>
             3D view needs WebGL, which this browser/environment doesn&apos;t support. The 2D plan and Studio editor
             above still have the full, real room data — try the 3D view again in a standard desktop browser
             (Chrome, Firefox, Safari) with hardware acceleration on.
           </p>
         )}
       </div>
-      <p style={{ fontSize: 12, color: "#888", marginTop: 6 }}>
+      <p style={{ fontSize: 12.5, color: "var(--color-ink-faint)", marginTop: 8 }}>
         Drag to orbit, scroll to zoom. Massing view built directly from this plan&apos;s real room/wall coordinates — not photorealistic rendering.
       </p>
     </div>
