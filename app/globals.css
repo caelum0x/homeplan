@@ -3,24 +3,36 @@
    No UI framework: plain CSS custom properties + utility classes, kept in
    one file deliberately (small app, single design language) rather than
    scattered CSS Modules per component.
+
+   Visual direction (2026-10-26 redesign): restrained, near-monochrome
+   palette inspired by the layout rhythm/typography confidence of
+   maket.ai's real marketing site (large centered sans headline, black
+   pill CTAs with a circular arrow, flat warm-paper background, borders
+   instead of shadows) filtered through the portfolio's own mandate —
+   simple/clean like X, Instagram, Cursor, ChatGPT: mostly neutral ink on
+   paper, exactly one accent color (clay) used sparingly, no gradients on
+   backgrounds, no emoji, icon-first controls. Original implementation,
+   not a copy of maket's code, copy, or assets.
 --------------------------------------------------------------------- */
 
 :root {
-  /* Surface + ink: warm paper background (architecture-studio feel),
-     near-navy ink for text — not pure black/white. */
-  --color-bg: #f6f4ef;
+  /* Surface + ink: warm paper background, near-black ink — restrained,
+     not pure #000/#fff, but close enough to read as monochrome. */
+  --color-bg: #f7f6f3;
   --color-surface: #ffffff;
-  --color-surface-sunken: #f0eee7;
-  --color-border: #e2ddd2;
-  --color-border-strong: #cfc8b8;
+  --color-surface-sunken: #efeeea;
+  --color-border: #e5e2d9;
+  --color-border-strong: #d2cdc0;
 
-  --color-ink: #1b2430;
-  --color-ink-soft: #566070;
-  --color-ink-faint: #8b93a0;
+  --color-ink: #111110;
+  --color-ink-soft: #5c5a54;
+  --color-ink-faint: #8f8c83;
 
-  /* Brand: deep navy for primary actions/nav, clay for accents/active state. */
-  --color-brand: #1b2430;
-  --color-brand-hover: #2a3647;
+  /* Brand: near-black for primary pills/nav (matches the restrained
+     monochrome mandate), one sparing clay accent for the single highlight
+     moment (eyebrow chip, Pro pricing) — never used for large surfaces. */
+  --color-brand: #111110;
+  --color-brand-hover: #2a2a27;
   --color-brand-contrast: #ffffff;
   --color-accent: #c9622d;
   --color-accent-soft: #f7e7da;
@@ -38,14 +50,32 @@
   --color-danger-border: #f5c2c2;
   --color-danger-text: #a3242a;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 18px;
+  /* Spacing scale — only these values, nothing between/outside them. */
+  --space-25: 2px;
+  --space-50: 4px;
+  --space-75: 8px;
+  --space-100: 12px;
+  --space-200: 16px;
+  --space-300: 24px;
+  --space-400: 32px;
+  --space-500: 40px;
+  --space-600: 48px;
+  --space-700: 64px;
+  --space-800: 80px;
+  --space-900: 96px;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
   --radius-full: 999px;
 
-  --shadow-sm: 0 1px 2px rgba(27, 36, 48, 0.06);
-  --shadow-md: 0 4px 16px rgba(27, 36, 48, 0.08);
-  --shadow-lg: 0 12px 32px rgba(27, 36, 48, 0.12);
+  --shadow-sm: 0 1px 2px rgba(17, 17, 16, 0.05);
+  --shadow-md: 0 4px 16px rgba(17, 17, 16, 0.06);
+  --shadow-lg: 0 16px 40px rgba(17, 17, 16, 0.1);
+
+  /* Motion: weighted, decelerating — never a browser-default linear/ease
+     curve. Only transform/opacity are animated anywhere in this file. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   --font-sans: var(--font-geist-sans), -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -99,7 +129,21 @@ textarea {
 h1,
 h2,
 h3 {
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+  font-weight: 650;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -115,8 +159,8 @@ h3 {
 
 .topbar {
   border-bottom: 1px solid var(--color-border);
-  background: rgba(246, 244, 239, 0.88);
-  backdrop-filter: blur(6px);
+  background: rgba(247, 246, 243, 0.86);
+  backdrop-filter: blur(8px);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -134,7 +178,7 @@ h3 {
   align-items: center;
   gap: 10px;
   font-weight: 650;
-  font-size: 17px;
+  font-size: 16px;
   color: var(--color-ink);
 }
 
@@ -145,13 +189,24 @@ h3 {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 22px;
   font-size: 13.5px;
+  font-weight: 500;
   color: var(--color-ink-soft);
+}
+
+.nav-links a {
+  transition: color 0.2s var(--ease-out);
 }
 
 .nav-links a:hover {
   color: var(--color-ink);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 24px;
 }
 
 /* ---------------------------------------------------------------------
@@ -159,7 +214,7 @@ h3 {
 --------------------------------------------------------------------- */
 
 .hero {
-  padding: 56px 0 8px;
+  padding: var(--space-700) 0 var(--space-100);
 }
 
 .hero-eyebrow {
@@ -168,21 +223,20 @@ h3 {
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--color-accent);
   background: var(--color-accent-soft);
   padding: 5px 12px;
   border-radius: var(--radius-full);
-  margin-bottom: 18px;
+  margin-bottom: var(--space-300);
 }
 
 .hero h1 {
   font-size: 40px;
-  font-weight: 650;
+  line-height: 1.08;
   color: var(--color-ink);
-  max-width: 640px;
-  margin-bottom: 14px;
+  max-width: 680px;
+  margin-bottom: var(--space-200);
 }
 
 .hero p {
@@ -196,29 +250,116 @@ h3 {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 64px 0 12px;
+  padding: var(--space-800) 0 var(--space-300);
 }
 
 .hero-centered .hero-eyebrow {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-300);
 }
 
 .hero-centered h1 {
-  font-size: 46px;
-  max-width: 740px;
-  margin-bottom: 18px;
+  font-size: 56px;
+  max-width: 680px;
+  margin-bottom: var(--space-300);
 }
 
 .hero-centered p {
-  max-width: 540px;
+  max-width: 520px;
   font-size: 17px;
   line-height: 1.6;
+  margin-bottom: var(--space-500);
 }
 
 @media (max-width: 640px) {
   .hero-centered h1 {
-    font-size: 32px;
+    font-size: 34px;
   }
+}
+
+/* ---------------------------------------------------------------------
+   Tagline reveal — the one large-type "stop and read this" moment,
+   separate from the hero. Words start muted and activate to full ink
+   color in reading order as the section scrolls into view.
+--------------------------------------------------------------------- */
+
+.tagline-reveal {
+  padding: var(--space-900) 0;
+  text-align: center;
+}
+
+.tagline-reveal p {
+  font-size: 34px;
+  line-height: 1.3;
+  font-weight: 600;
+  max-width: 760px;
+  margin: 0 auto;
+  letter-spacing: -0.01em;
+}
+
+@media (max-width: 640px) {
+  .tagline-reveal p {
+    font-size: 24px;
+  }
+}
+
+.tagline-word {
+  color: var(--color-ink-faint);
+  opacity: 0.4;
+  transition: color 0.5s var(--ease-out), opacity 0.5s var(--ease-out);
+}
+
+.tagline-word.active {
+  color: var(--color-ink);
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------
+   Feature pillars (Generate / Edit / Export) — the one capability-grid
+   section, mirroring the "three pillar" rhythm common to this product
+   category, filled with HomePlan's own real shipped features.
+--------------------------------------------------------------------- */
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-200);
+  padding: var(--space-300) 0 var(--space-700);
+}
+
+@media (max-width: 760px) {
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.feature-card {
+  padding: var(--space-300);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.feature-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-ink);
+  margin-bottom: var(--space-200);
+}
+
+.feature-card h3 {
+  font-size: 15px;
+  margin-bottom: var(--space-75);
+}
+
+.feature-card p {
+  font-size: 13.5px;
+  color: var(--color-ink-soft);
+  line-height: 1.5;
 }
 
 /* ---------------------------------------------------------------------
@@ -239,8 +380,9 @@ h3 {
 }
 
 .generator-card {
-  padding: 24px;
-  margin-top: 28px;
+  padding: var(--space-300);
+  margin-top: var(--space-400);
+  box-shadow: var(--shadow-md);
 }
 
 /* ---------------------------------------------------------------------
@@ -252,7 +394,7 @@ h3 {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--color-ink-soft);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-75);
 }
 
 .textarea,
@@ -265,7 +407,7 @@ h3 {
   border: 1.5px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-ink);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
 }
 
 .textarea {
@@ -278,19 +420,19 @@ h3 {
 .text-input:focus,
 .select-input:focus {
   outline: none;
-  border-color: var(--color-brand);
-  box-shadow: 0 0 0 3px rgba(27, 36, 48, 0.08);
+  border-color: var(--color-ink);
+  box-shadow: 0 0 0 3px rgba(17, 17, 16, 0.08);
 }
 
 .field-row {
   display: flex;
-  gap: 10px;
+  gap: var(--space-100);
 }
 
 .field-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-50);
   flex: 1;
   font-size: 12px;
   color: var(--color-ink-soft);
@@ -303,31 +445,42 @@ h3 {
 }
 
 /* ---------------------------------------------------------------------
-   Buttons
+   Buttons — pill shape with a circular arrow for marketing CTAs
+   (.btn-pill), rectangular for in-tool actions. Every interactive
+   element ships hover/active/focus/disabled states.
 --------------------------------------------------------------------- */
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   padding: 11px 20px;
   font-size: 14.5px;
   font-weight: 600;
   border-radius: var(--radius-sm);
   border: 1.5px solid transparent;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease, transform 0.08s ease;
+  transition: background-color 0.2s var(--ease-out), border-color 0.2s var(--ease-out), opacity 0.2s var(--ease-out), transform 0.15s var(--ease-out);
   white-space: nowrap;
 }
 
-.btn:active {
-  transform: translateY(1px);
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
 }
 
 .btn:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: 0.5;
   transform: none;
 }
 
@@ -386,6 +539,35 @@ h3 {
   padding: 0;
 }
 
+/* Pill CTA — the single signature marketing-button shape, used only for
+   the handful of top-level calls to action (nav, hero, pricing, footer),
+   never for in-tool utility buttons. */
+.btn-pill {
+  border-radius: var(--radius-full);
+  padding: 12px 10px 12px 22px;
+}
+
+.btn-pill.btn-sm {
+  padding: 7px 7px 7px 16px;
+}
+
+.icon-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: var(--color-brand-contrast);
+  color: var(--color-brand);
+  flex-shrink: 0;
+}
+
+.btn-pill.btn-sm .icon-circle {
+  width: 20px;
+  height: 20px;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -396,11 +578,11 @@ h3 {
   background: var(--color-surface);
   color: var(--color-ink-soft);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.2s var(--ease-out), color 0.2s var(--ease-out), background-color 0.2s var(--ease-out);
 }
 
 .chip:hover {
-  border-color: var(--color-brand);
+  border-color: var(--color-ink);
   color: var(--color-ink);
   background: var(--color-surface-sunken);
 }
@@ -412,9 +594,9 @@ h3 {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-100);
   flex-wrap: wrap;
-  margin-bottom: 18px;
+  margin-bottom: var(--space-200);
 }
 
 .segmented {
@@ -435,7 +617,7 @@ h3 {
   background: transparent;
   color: var(--color-ink-soft);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.2s var(--ease-out), color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
 }
 
 .segmented-btn.active {
@@ -450,7 +632,7 @@ h3 {
 
 .toolbar-group {
   display: flex;
-  gap: 8px;
+  gap: var(--space-75);
 }
 
 /* ---------------------------------------------------------------------
@@ -459,9 +641,9 @@ h3 {
 
 .stat-row {
   display: flex;
-  gap: 10px;
+  gap: var(--space-100);
   flex-wrap: wrap;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-300);
 }
 
 .stat-pill {
@@ -490,7 +672,7 @@ h3 {
   padding: 13px 16px;
   font-size: 13.5px;
   display: flex;
-  gap: 10px;
+  gap: var(--space-100);
   align-items: flex-start;
 }
 
@@ -503,7 +685,7 @@ h3 {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-50);
 }
 
 .alert-warning {
@@ -531,14 +713,14 @@ h3 {
 .empty-state {
   border: 1.5px dashed var(--color-border-strong);
   border-radius: var(--radius-lg);
-  padding: 56px 24px;
+  padding: var(--space-600) var(--space-300);
   text-align: center;
   color: var(--color-ink-faint);
-  margin-top: 28px;
+  margin-top: var(--space-300);
 }
 
 .empty-state svg {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-100);
   color: var(--color-border-strong);
 }
 
@@ -610,7 +792,7 @@ h3 {
   font-size: 15px;
   font-weight: 650;
   color: var(--color-ink);
-  margin: 28px 0 12px;
+  margin: var(--space-400) 0 var(--space-200);
 }
 
 /* ---------------------------------------------------------------------
@@ -618,23 +800,70 @@ h3 {
 --------------------------------------------------------------------- */
 
 .site-footer {
-  margin-top: 72px;
-  padding: 28px 0 40px;
+  margin-top: var(--space-900);
+  padding: var(--space-600) 0 var(--space-500);
+  border-top: 1px solid var(--color-border);
+}
+
+.site-footer-top {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-400);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-600);
+}
+
+.site-footer-columns {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: var(--space-700);
+}
+
+.site-footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-100);
+}
+
+.site-footer-col h4 {
+  font-size: 11.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-faint);
+  margin-bottom: var(--space-50);
+}
+
+.site-footer-col a {
+  font-size: 13.5px;
+  color: var(--color-ink-soft);
+  transition: color 0.2s var(--ease-out);
+}
+
+.site-footer-col a:hover {
+  color: var(--color-ink);
+}
+
+.site-footer-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-100);
+  padding-top: var(--space-400);
   border-top: 1px solid var(--color-border);
   font-size: 13px;
   color: var(--color-ink-faint);
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
 }
 
-.site-footer a {
-  color: var(--color-ink-soft);
-}
-
-.site-footer a:hover {
-  color: var(--color-ink);
+@media (max-width: 760px) {
+  .site-footer-top {
+    flex-direction: column;
+  }
+  .site-footer-columns {
+    grid-template-columns: repeat(2, auto);
+    gap: var(--space-400);
+  }
 }
 
 @media (max-width: 640px) {

@@ -40,16 +40,11 @@ export function PricingCta() {
   }
 
   return (
-    <section className="card" style={{ marginTop: 48, marginBottom: 24, padding: 24 }}>
-      <h2 style={{ fontFamily: "var(--font-fraunces), serif", fontSize: 20, fontWeight: 650, marginBottom: 6 }}>
-        HomePlan Pro — $49/mo
-      </h2>
-      <p style={{ fontSize: 13.5, color: "var(--color-ink-soft)", marginBottom: 14, maxWidth: 560 }}>
-        The generator, Studio editor, and PDF/DXF export above are free and open source (MIT) —
-        self-host them yourself anytime. Pro is a hosted, supported version for teams who don&apos;t
-        want to run it themselves: priority support, early access to new features, and you&apos;re
-        funding the roadmap directly (human-validated plan uploads, premium-quality rendering, a
-        bigger furniture/materials catalog, and account-synced templates).
+    <section className="card" style={{ marginTop: 48, marginBottom: 24, padding: 28 }}>
+      <h2 style={{ fontSize: 22, fontWeight: 650, marginBottom: 6 }}>HomePlan Pro — $49/mo</h2>
+      <p style={{ fontSize: 13.5, color: "var(--color-ink-soft)", marginBottom: 16, maxWidth: 520 }}>
+        Everything above is free and self-hostable (MIT). Pro is hosted, with priority support and
+        early access to new features.
       </p>
       <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input
@@ -61,8 +56,11 @@ export function PricingCta() {
           placeholder="you@firm.com"
           style={{ flex: "1 1 220px" }}
         />
-        <button type="submit" disabled={loading} className="btn btn-primary">
+        <button type="submit" disabled={loading} className="btn btn-primary btn-pill">
           {loading ? "Starting checkout…" : "Get HomePlan Pro"}
+          <span className="icon-circle">
+            <ArrowIcon />
+          </span>
         </button>
       </form>
       {error && (
@@ -71,5 +69,13 @@ export function PricingCta() {
         </p>
       )}
     </section>
+  );
+}
+
+function ArrowIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

@@ -193,7 +193,7 @@ export default function Home() {
             <BrandMark className="brand-mark" />
             HomePlan
           </a>
-          <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
+          <div className="nav-actions">
             <nav className="nav-links">
               <a href="#features">Features</a>
               <a href="#pricing">Pricing</a>
@@ -201,9 +201,11 @@ export default function Home() {
                 GitHub
               </a>
             </nav>
-            <a href="#pricing" className="btn btn-primary btn-sm" style={{ borderRadius: "var(--radius-full)" }}>
+            <a href="#pricing" className="btn btn-primary btn-pill btn-sm">
               Get HomePlan Pro
-              <ArrowIcon />
+              <span className="icon-circle">
+                <ArrowIcon />
+              </span>
             </a>
           </div>
         </div>
@@ -211,17 +213,12 @@ export default function Home() {
 
       <main className="container" style={{ paddingBottom: 60 }}>
         <section className="hero hero-centered">
-          <span className="hero-eyebrow">Open-source Maket.ai alternative</span>
-          <h1 style={{ fontFamily: "var(--font-fraunces), serif" }}>The open-source AI floor plan generator</h1>
-          <p>
-            Describe a home in plain language and get a real, computed room layout back — walls, doors, dimensions,
-            furniture, even a photorealistic render.
-            <br />
-            Free, instant, self-hostable, MIT licensed.
-          </p>
+          <span className="hero-eyebrow">Open source</span>
+          <h1>From a sentence to a buildable floor plan</h1>
+          <p>Real computed rooms, walls, and doors. Free exports, no credit limits, self-hostable.</p>
         </section>
 
-        <div id="features" className="card generator-card">
+        <div id="generator" className="card generator-card">
           <div className="segmented" style={{ marginBottom: 18 }}>
             {(
               [
@@ -284,7 +281,7 @@ export default function Home() {
           <div className="empty-state">
             <HouseOutlineIcon />
             <h3>No plan yet</h3>
-            <p>Describe bedroom/bathroom count, square footage and any must-haves above, then generate.</p>
+            <p>Describe bedrooms, baths, and square footage above.</p>
           </div>
         )}
 
@@ -338,15 +335,19 @@ export default function Home() {
               <span className="toolbar-spacer" />
               <div className="toolbar-group">
                 <button type="button" onClick={handleShare} className="btn btn-secondary btn-sm">
+                  <ShareIcon />
                   {shareCopied ? "Link copied" : "Share"}
                 </button>
                 <button type="button" onClick={() => handleExport("png")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
+                  <DownloadIcon />
                   {exporting === "png" ? "Exporting…" : "PNG"}
                 </button>
                 <button type="button" onClick={() => handleExport("pdf")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
+                  <DownloadIcon />
                   {exporting === "pdf" ? "Exporting…" : "PDF"}
                 </button>
                 <button type="button" onClick={() => handleExport("dxf")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
+                  <DownloadIcon />
                   {exporting === "dxf" ? "Exporting…" : "DXF"}
                 </button>
               </div>
@@ -413,13 +414,59 @@ export default function Home() {
         )}
       </main>
 
+      <div className="container">
+        <TaglineReveal text="Every plan is real geometry, not a picture. Rooms, walls, and doors you can measure, edit, and export instantly." />
+
+        <div id="features" className="feature-grid">
+          <FeatureCard icon={<SparkleIcon />} title="Generate">
+            Describe bedrooms, baths, and square footage. Get three real layouts instantly.
+          </FeatureCard>
+          <FeatureCard icon={<EditPencilIcon />} title="Edit">
+            Drag rooms in Studio, or type a change in plain language.
+          </FeatureCard>
+          <FeatureCard icon={<DownloadIcon />} title="Export">
+            PDF, DXF, PNG, 3D massing, and AI renders — all free, unlimited.
+          </FeatureCard>
+        </div>
+      </div>
+
       <div id="pricing" className="container">
         <PricingCta />
       </div>
 
       <footer className="site-footer container">
-        <span>Open source · MIT licensed · self-hostable</span>
-        <a href="https://github.com/caelum0x/homeplan">github.com/caelum0x/homeplan</a>
+        <div className="site-footer-top">
+          <a href="/" className="brand">
+            <BrandMark className="brand-mark" />
+            HomePlan
+          </a>
+          <div className="site-footer-columns">
+            <div className="site-footer-col">
+              <h4>Product</h4>
+              <a href="#features">Features</a>
+              <a href="#pricing">Pricing</a>
+              <a href="https://github.com/caelum0x/homeplan" target="_blank" rel="noreferrer">
+                GitHub
+              </a>
+            </div>
+            <div className="site-footer-col">
+              <h4>Resources</h4>
+              <a href="https://github.com/caelum0x/homeplan#readme" target="_blank" rel="noreferrer">
+                Documentation
+              </a>
+              <a href="https://github.com/caelum0x/homeplan/blob/main/LICENSE" target="_blank" rel="noreferrer">
+                License (MIT)
+              </a>
+              <a href="https://github.com/caelum0x/homeplan/issues/new" target="_blank" rel="noreferrer">
+                Report an issue
+              </a>
+            </div>
+          </div>
+        </div>
+        <div className="site-footer-bottom">
+          <span>Open source · MIT licensed · self-hostable</span>
+          <a href="https://github.com/caelum0x/homeplan">github.com/caelum0x/homeplan</a>
+        </div>
       </footer>
     </>
   );
@@ -454,5 +501,108 @@ function HouseOutlineIcon() {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="18" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="18" cy="19" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 4v11m0 0 4-4m-4 4-4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 19h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SparkleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function EditPencilIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 20h4L19 9l-4-4L4 16v4Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="m14 6 4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+interface FeatureCardProps {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}
+
+function FeatureCard({ icon, title, children }: FeatureCardProps) {
+  return (
+    <div className="feature-card">
+      <div className="feature-card-icon">{icon}</div>
+      <h3>{title}</h3>
+      <p>{children}</p>
+    </div>
+  );
+}
+
+/**
+ * The one large-type "stop and read this" moment (separate from the hero),
+ * per the landing-page-design skill's tagline-reveal rule: each word starts
+ * muted and activates to full ink color, in reading order, once the section
+ * crosses into view — never a single all-at-once fade, never replayed.
+ */
+function TaglineReveal({ text }: { text: string }) {
+  const [activeCount, setActiveCount] = useState(0);
+  const words = text.split(" ");
+
+  function handleRef(node: HTMLParagraphElement | null) {
+    if (!node || activeCount > 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          words.forEach((_, i) => {
+            setTimeout(() => setActiveCount((c) => Math.max(c, i + 1)), i * 45);
+          });
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.4 }
+    );
+    observer.observe(node);
+  }
+
+  return (
+    <section className="tagline-reveal">
+      <p ref={handleRef}>
+        {words.map((word, i) => (
+          <span key={i} className={`tagline-word ${i < activeCount ? "active" : ""}`}>
+            {word}{" "}
+          </span>
+        ))}
+      </p>
+    </section>
   );
 }

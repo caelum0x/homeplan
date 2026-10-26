@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fraunces, Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,15 +12,6 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Warm display serif for headlines, paired with Geist Sans for UI/body text —
-// gives the marketing-site feel real weight without touching maket.ai's own
-// fonts, colors, logo, or any other proprietary asset.
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
-  axes: ["opsz", "SOFT"],
-});
-
 export const metadata: Metadata = {
   title: "HomePlan — open-source AI floor plan generator",
   description:
@@ -29,7 +20,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable}`}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>{children}</body>
     </html>
   );
