@@ -19,8 +19,9 @@
 // user drags a room into an odd, non-abutting position; it never affects
 // freshly generated plans, where rooms always fully tile their zone.
 
-import type { Door, FloorPlan, Room, RoomType, Wall } from "./types";
+import type { Door, FloorPlan, FurnitureItem, FurnitureType, Room, RoomType, Wall } from "./types";
 import { sharedEdgeOverlap } from "./geometry";
+import { makeFurniture } from "./furniture";
 
 const DOOR_WIDTH = 3;
 const MIN_DOOR_CLEARANCE = 2.2; // feet — minimum shared-edge length before we bother drawing a door opening
@@ -45,7 +46,7 @@ export function moveRoom(plan: FloorPlan, roomId: string, x: number, y: number):
   const room = plan.rooms.find((r) => r.id === roomId);
   if (!room) return plan;
   const next = { ...room, x: Math.max(0, snap(x)), y: Math.max(0, snap(y)) };
-  return recompute(replaceRoom(plan.rooms, next));
+  return recompute(replaceRoom(plan.rooms, next), plan);
 }
 
 /** Immutable: returns a new FloorPlan with one room resized to (w, h), anchored at its current x/y. */
@@ -55,7 +56,7 @@ export function resizeRoom(plan: FloorPlan, roomId: string, w: number, h: number
   const nextW = clampSize(w);
   const nextH = clampSize(h);
   const next = { ...room, w: nextW, h: nextH, areaSqft: round1(nextW * nextH) };
-  return recompute(replaceRoom(plan.rooms, next));
+  return recompute(replaceRoom(plan.rooms, next), plan);
 }
 
 /** Immutable: returns a new FloorPlan with one room's label/type changed. */
@@ -63,7 +64,20 @@ export function renameRoom(plan: FloorPlan, roomId: string, label: string, type:
   const room = plan.rooms.find((r) => r.id === roomId);
   if (!room) return plan;
   const next = { ...room, label, type };
-  return recompute(replaceRoom(plan.rooms, next));
+  return recompute(replaceRoom(plan.rooms, next), plan);
+}
+
+/** Immutable: returns a new FloorPlan with one room's floor color overridden (or cleared, passing undefined). */
+export function setRoomFloorColor(plan: FloorPlan, roomId: string, color: string | undefined): FloorPlan {
+  const room = plan.rooms.find((r) => r.id === roomId);
+  if (!room) return plan;
+  const next = { ...room, floorColor: color };
+  return recompute(replaceRoom(plan.rooms, next), plan);
+}
+
+/** Immutable: returns a new FloorPlan with the wall color overridden (or cleared, passing undefined). */
+export function setWallColor(plan: FloorPlan, color: string | undefined): FloorPlan {
+  return { ...plan, wallColor: color };
 }
 
 let addCounter = 0;
@@ -76,12 +90,44 @@ export function addRoom(plan: FloorPlan, type: RoomType, label: string): FloorPl
   const y = snap(Math.max(0, plan.footprint.h - h));
   const id = `custom_${Date.now()}_${addCounter++}`;
   const room: Room = { id, type, label, x, y, w, h, areaSqft: round1(w * h) };
-  return recompute([...plan.rooms, room]);
+  return recompute([...plan.rooms, room], plan);
 }
 
-/** Immutable: removes a room by id. */
+/** Immutable: removes a room by id. Furniture is left in place (it's independently positioned, not room-owned) so nothing a user placed disappears unexpectedly. */
 export function removeRoom(plan: FloorPlan, roomId: string): FloorPlan {
-  return recompute(plan.rooms.filter((r) => r.id !== roomId));
+  return recompute(
+    plan.rooms.filter((r) => r.id !== roomId),
+    plan,
+  );
+}
+
+// ---- Furniture: independent, freely-positioned items layered on top of the room geometry. ----
+
+/** Immutable: adds a new furniture piece from the catalog near the top-left of the footprint. */
+export function addFurniture(plan: FloorPlan, type: FurnitureType): FloorPlan {
+  const item = makeFurniture(type, snap(plan.footprint.w > 6 ? 2 : 0), snap(plan.footprint.h > 6 ? 2 : 0));
+  return { ...plan, furniture: [...plan.furniture, item] };
+}
+
+/** Immutable: moves one furniture piece to (x, y). Furniture can be placed anywhere, including overlapping a wall — the Studio UI warns visually, it never silently snaps or blocks. */
+export function moveFurniture(plan: FloorPlan, furnitureId: string, x: number, y: number): FloorPlan {
+  return {
+    ...plan,
+    furniture: plan.furniture.map((f) => (f.id === furnitureId ? { ...f, x: snap(x), y: snap(y) } : f)),
+  };
+}
+
+/** Immutable: rotates one furniture piece by a relative delta in degrees (normalized to [0, 360)). */
+export function rotateFurniture(plan: FloorPlan, furnitureId: string, deltaDegrees: number): FloorPlan {
+  return {
+    ...plan,
+    furniture: plan.furniture.map((f) => (f.id === furnitureId ? { ...f, rotation: ((f.rotation + deltaDegrees) % 360 + 360) % 360 } : f)),
+  };
+}
+
+/** Immutable: removes one furniture piece by id. */
+export function removeFurniture(plan: FloorPlan, furnitureId: string): FloorPlan {
+  return { ...plan, furniture: plan.furniture.filter((f) => f.id !== furnitureId) };
 }
 
 function replaceRoom(rooms: Room[], next: Room): Room[] {
@@ -90,10 +136,12 @@ function replaceRoom(rooms: Room[], next: Room): Room[] {
 
 /**
  * Rebuilds footprint/walls/doors/warnings/totalAreaSqft from a raw room
- * list. Footprint grows to the bounding box of every room so a dragged room
- * is never clipped or silently misrepresented.
+ * list, carrying furniture and wallColor through unchanged from `source`
+ * (room geometry edits never implicitly touch furniture placement or
+ * material choices). Footprint grows to the bounding box of every room so a
+ * dragged room is never clipped or silently misrepresented.
  */
-function recompute(rooms: Room[]): FloorPlan {
+function recompute(rooms: Room[], source: FloorPlan): FloorPlan {
   const footprintW = rooms.length ? Math.max(...rooms.map((r) => r.x + r.w)) : 0;
   const footprintH = rooms.length ? Math.max(...rooms.map((r) => r.y + r.h)) : 0;
 
@@ -107,6 +155,8 @@ function recompute(rooms: Room[]): FloorPlan {
     walls,
     doors,
     warnings,
+    furniture: source.furniture,
+    wallColor: source.wallColor,
   };
 }
 

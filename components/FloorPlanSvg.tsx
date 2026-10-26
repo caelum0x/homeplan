@@ -1,5 +1,6 @@
 import type { FloorPlan, Room } from "@/lib/layout/types";
 import { ROOM_FILL, SVG_PADDING as PADDING, SVG_SCALE as SCALE } from "@/lib/renderSvg";
+import { FurniturePiece } from "./FurniturePiece";
 
 interface FloorPlanSvgProps {
   plan: FloorPlan;
@@ -32,7 +33,7 @@ export function FloorPlanSvg({ plan }: FloorPlanSvgProps) {
             y1={toPx(wall.y1)}
             x2={toPx(wall.x2)}
             y2={toPx(wall.y2)}
-            stroke="#2b2b2b"
+            stroke={plan.wallColor ?? "#2b2b2b"}
             strokeWidth={wall.exterior ? 4 : 2}
             strokeLinecap="square"
           />
@@ -40,6 +41,10 @@ export function FloorPlanSvg({ plan }: FloorPlanSvgProps) {
 
         {plan.doors.map((door) => (
           <DoorMark key={door.id} door={door} toPx={toPx} />
+        ))}
+
+        {plan.furniture.map((item) => (
+          <FurniturePiece key={item.id} item={item} toPx={toPx} />
         ))}
       </g>
     </svg>
@@ -57,15 +62,16 @@ function RoomRect({ room, toPx }: { room: Room; toPx: (ft: number) => number }) 
 
   return (
     <g>
-      <rect x={x} y={y} width={w} height={h} fill={ROOM_FILL[room.type] ?? "#f0f0f0"} stroke="#c9c9c9" strokeWidth={1} />
+      <rect x={x} y={y} width={w} height={h} fill={room.floorColor ?? ROOM_FILL[room.type] ?? "#f0f0f0"} stroke="#c9c9c9" strokeWidth={1} />
       <clipPath id={clipId}>
         <rect x={x} y={y} width={w} height={h} />
       </clipPath>
+      {/* Anchored near the top of the room, not centered, so furniture icons in the room body never collide with the label. */}
       <g clipPath={`url(#${clipId})`}>
-        <text x={x + w / 2} y={y + h / 2 - 6} textAnchor="middle" fontSize={fontSize} fontWeight={600} fill="#2b2b2b">
+        <text x={x + w / 2} y={y + fontSize + 4} textAnchor="middle" fontSize={fontSize} fontWeight={600} fill="#2b2b2b">
           {room.label}
         </text>
-        <text x={x + w / 2} y={y + h / 2 + 10} textAnchor="middle" fontSize={fontSize - 2} fill="#5a5a5a">
+        <text x={x + w / 2} y={y + fontSize * 2 + 6} textAnchor="middle" fontSize={fontSize - 2} fill="#5a5a5a">
           {room.w.toFixed(1)}&apos; × {room.h.toFixed(1)}&apos; ({room.areaSqft} sqft)
         </text>
       </g>

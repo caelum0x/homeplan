@@ -1,6 +1,7 @@
 import type { BriefInput, Door, FloorPlan, Room, Wall } from "./types";
 import { buildRoomProgram, getMinArea, type ProgramRoom } from "./program";
 import { allocateLengths, layoutRow, sharedEdgeOverlap, type AllocItem, type Rect } from "./geometry";
+import { autoPlaceFurniture } from "./furniture";
 
 const HALLWAY_WIDTH = 3.5;
 const DOOR_WIDTH = 3;
@@ -167,14 +168,16 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
   checkAspectRatios(rooms, warnings);
 
   const totalAreaSqft = round1(rooms.reduce((s, r) => s + r.areaSqft, 0));
+  const roundedRooms = rooms.map(roundRoom);
 
   return {
     footprint: { w: round1(totalWidth), h: round1(depth) },
     totalAreaSqft,
-    rooms: rooms.map(roundRoom),
+    rooms: roundedRooms,
     walls,
     doors,
     warnings,
+    furniture: autoPlaceFurniture(roundedRooms),
   };
 }
 

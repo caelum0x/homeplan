@@ -4,6 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { FloorPlan, RoomType } from "@/lib/layout/types";
+import { FURNITURE_CATALOG, type FurnitureSpec } from "@/lib/layout/furniture";
+
+/** Honest simplification: every furniture piece extrudes to a flat block sized by its category, not a modeled shape — real geometric volume, not a photoreal asset. */
+const CATEGORY_HEIGHT: Record<FurnitureSpec["category"], number> = {
+  seating: 1.5,
+  sleeping: 1.6,
+  surface: 1.5,
+  storage: 4,
+  appliance: 3,
+  fixture: 1.8,
+  decor: 0.04,
+};
 
 /**
  * Cheaply checks for real WebGL support with a throwaway canvas before we
@@ -83,8 +95,11 @@ export function FloorPlan3D({ plan }: FloorPlan3DProps) {
     const centerZ = plan.footprint.h / 2;
     const diag = Math.hypot(plan.footprint.w, plan.footprint.h);
 
-    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
-    camera.position.set(centerX + diag * 0.5, diag * 0.55, centerZ + diag * 0.7);
+    // Narrower FOV + a higher elevation ratio than a typical walkthrough camera reads closer to a
+    // clean 3/4 isometric massing render (flatter perspective distortion) while staying a real
+    // perspective camera (no extra orthographic-camera plumbing needed for this honest massing view).
+    const camera = new THREE.PerspectiveCamera(32, width / height, 0.1, 1000);
+    camera.position.set(centerX + diag * 0.62, diag * 0.72, centerZ + diag * 0.62);
 
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -147,6 +162,21 @@ export function FloorPlan3D({ plan }: FloorPlan3DProps) {
       );
       const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff }));
       mesh.position.set(door.x, 0.08, door.y);
+      scene.add(mesh);
+    }
+
+    // Furniture: a simple colored block per piece, sized to its real footprint and a
+    // category-based height (chair-height, table-height, wardrobe-height, etc.) — the
+    // "basic 3D primitives" version of furniture, not a photoreal asset.
+    for (const item of plan.furniture) {
+      const spec = FURNITURE_CATALOG[item.type];
+      const blockHeight = CATEGORY_HEIGHT[spec.category];
+      const geo = new THREE.BoxGeometry(item.w, blockHeight, item.h);
+      const color = new THREE.Color(spec.color);
+      const mat = new THREE.MeshStandardMaterial({ color, transparent: item.type === "rug", opacity: item.type === "rug" ? 0.8 : 1 });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(item.x + item.w / 2, blockHeight / 2 + (item.type === "rug" ? 0.03 : 0.2), item.y + item.h / 2);
+      mesh.rotation.y = (-item.rotation * Math.PI) / 180;
       scene.add(mesh);
     }
 

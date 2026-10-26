@@ -1,4 +1,6 @@
-import type { FloorPlan, Room, RoomType } from "./layout/types";
+import type { FloorPlan, FurnitureItem, Room, RoomType } from "./layout/types";
+import { FURNITURE_CATALOG } from "./layout/furniture";
+import { furnitureIconDetails } from "./furnitureIcon";
 
 export const ROOM_FILL: Partial<Record<RoomType, string>> = {
   entry: "#e8e3d8",
@@ -32,10 +34,11 @@ export function floorPlanToSvgString(plan: FloorPlan): string {
   const height = toPx(plan.footprint.h) + SVG_PADDING * 2;
 
   const rooms = plan.rooms.map((room) => roomToSvg(room, toPx)).join("\n");
+  const wallColor = plan.wallColor ?? "#2b2b2b";
   const walls = plan.walls
     .map(
       (w) =>
-        `<line x1="${toPx(w.x1)}" y1="${toPx(w.y1)}" x2="${toPx(w.x2)}" y2="${toPx(w.y2)}" stroke="#2b2b2b" stroke-width="${
+        `<line x1="${toPx(w.x1)}" y1="${toPx(w.y1)}" x2="${toPx(w.x2)}" y2="${toPx(w.y2)}" stroke="${wallColor}" stroke-width="${
           w.exterior ? 4 : 2
         }" stroke-linecap="square" />`,
     )
@@ -50,6 +53,7 @@ export function floorPlanToSvgString(plan: FloorPlan): string {
         : `<line x1="${cx}" y1="${cy - half}" x2="${cx}" y2="${cy + half}" stroke="#ffffff" stroke-width="4" />`;
     })
     .join("\n");
+  const furniture = (plan.furniture ?? []).map((f) => furnitureToSvg(f, toPx)).join("\n");
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">`,
@@ -58,8 +62,35 @@ export function floorPlanToSvgString(plan: FloorPlan): string {
     rooms,
     walls,
     doors,
+    furniture,
     `</g>`,
     `</svg>`,
+  ].join("\n");
+}
+
+function furnitureToSvg(item: FurnitureItem, toPx: (ft: number) => number): string {
+  const w = toPx(item.w);
+  const h = toPx(item.h);
+  const spec = FURNITURE_CATALOG[item.type];
+  const details = furnitureIconDetails(item.type);
+  const detailSvg = details
+    .map((shape) => {
+      if (shape.kind === "rect") {
+        const dash = shape.dashed ? ` stroke-dasharray="4 3"` : "";
+        return `<rect x="${shape.x * w}" y="${shape.y * h}" width="${shape.w * w}" height="${shape.h * h}" fill="${shape.fill === "base" ? spec.color : "none"}" stroke="${shape.stroke ? "#5a5a5a" : "none"}" stroke-width="1" rx="${(shape.rx ?? 0) * Math.min(w, h)}"${dash} />`;
+      }
+      if (shape.kind === "circle") {
+        return `<circle cx="${shape.cx * w}" cy="${shape.cy * h}" r="${shape.r * Math.min(w, h)}" fill="${shape.fill === "base" ? spec.color : "none"}" stroke="#5a5a5a" stroke-width="1" />`;
+      }
+      return `<line x1="${shape.x1 * w}" y1="${shape.y1 * h}" x2="${shape.x2 * w}" y2="${shape.y2 * h}" stroke="#5a5a5a" stroke-width="1" />`;
+    })
+    .join("\n");
+
+  return [
+    `<g transform="translate(${toPx(item.x)}, ${toPx(item.y)}) rotate(${item.rotation}, ${w / 2}, ${h / 2})">`,
+    `<rect x="0" y="0" width="${w}" height="${h}" fill="${spec.color}" fill-opacity="${item.type === "rug" ? 0.5 : 0.85}" stroke="#5a5a5a" stroke-width="0.75" rx="2" />`,
+    detailSvg,
+    `</g>`,
   ].join("\n");
 }
 
@@ -69,7 +100,7 @@ function roomToSvg(room: Room, toPx: (ft: number) => number): string {
   const w = toPx(room.w);
   const h = toPx(room.h);
   const fontSize = Math.round(Math.min(13, Math.max(9, w / 10)) * 10) / 10;
-  const fill = ROOM_FILL[room.type] ?? "#f0f0f0";
+  const fill = room.floorColor ?? ROOM_FILL[room.type] ?? "#f0f0f0";
   const label = escapeXml(room.label);
   const dims = `${room.w.toFixed(1)}' x ${room.h.toFixed(1)}' (${room.areaSqft} sqft)`;
   // Clip text to the room's own rect so a narrow room (e.g. a 4ft entry strip)
@@ -80,8 +111,11 @@ function roomToSvg(room: Room, toPx: (ft: number) => number): string {
     `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="#c9c9c9" stroke-width="1" />`,
     `<clipPath id="${clipId}"><rect x="${x}" y="${y}" width="${w}" height="${h}" /></clipPath>`,
     `<g clip-path="url(#${clipId})">`,
-    `<text x="${x + w / 2}" y="${y + h / 2 - 6}" text-anchor="middle" font-size="${fontSize}" font-weight="600" fill="#2b2b2b">${label}</text>`,
-    `<text x="${x + w / 2}" y="${y + h / 2 + 10}" text-anchor="middle" font-size="${fontSize - 2}" fill="#5a5a5a">${escapeXml(dims)}</text>`,
+    // Anchored near the top of the room (not vertically centered) so furniture icons placed in
+    // the room body never visually collide with the label — a real overlap bug found by
+    // reviewing real rendered screenshots once furniture was added, not assumed away.
+    `<text x="${x + w / 2}" y="${y + fontSize + 4}" text-anchor="middle" font-size="${fontSize}" font-weight="600" fill="#2b2b2b">${label}</text>`,
+    `<text x="${x + w / 2}" y="${y + fontSize * 2 + 6}" text-anchor="middle" font-size="${fontSize - 2}" fill="#5a5a5a">${escapeXml(dims)}</text>`,
     `</g>`,
   ].join("\n");
 }
