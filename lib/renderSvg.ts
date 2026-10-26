@@ -53,6 +53,10 @@ export function floorPlanToSvgString(plan: FloorPlan): string {
         : `<line x1="${cx}" y1="${cy - half}" x2="${cx}" y2="${cy + half}" stroke="#ffffff" stroke-width="4" />`;
     })
     .join("\n");
+  // `windows` is optional on FloorPlan (a plan saved/shared before this field existed
+  // — localStorage templates, old share links — won't have it), so always fall back
+  // to an empty list rather than crash a renderer handed stale data.
+  const windows = (plan.windows ?? []).map((w) => windowToSvg(w, toPx)).join("\n");
   const furniture = (plan.furniture ?? []).map((f) => furnitureToSvg(f, toPx)).join("\n");
 
   return [
@@ -61,10 +65,28 @@ export function floorPlanToSvgString(plan: FloorPlan): string {
     `<g transform="translate(${SVG_PADDING}, ${SVG_PADDING})">`,
     rooms,
     walls,
+    windows,
     doors,
     furniture,
     `</g>`,
     `</svg>`,
+  ].join("\n");
+}
+
+/** A window reads as a pale blue bar with a thin white mullion line down the middle, set into the exterior wall — visually distinct from a door's plain white gap. */
+function windowToSvg(w: { x: number; y: number; orientation: "h" | "v"; width: number }, toPx: (ft: number) => number): string {
+  const cx = toPx(w.x);
+  const cy = toPx(w.y);
+  const half = toPx(w.width) / 2;
+  if (w.orientation === "h") {
+    return [
+      `<line x1="${cx - half}" y1="${cy}" x2="${cx + half}" y2="${cy}" stroke="#7fb3d9" stroke-width="5" />`,
+      `<line x1="${cx - half}" y1="${cy}" x2="${cx + half}" y2="${cy}" stroke="#ffffff" stroke-width="1.5" />`,
+    ].join("\n");
+  }
+  return [
+    `<line x1="${cx}" y1="${cy - half}" x2="${cx}" y2="${cy + half}" stroke="#7fb3d9" stroke-width="5" />`,
+    `<line x1="${cx}" y1="${cy - half}" x2="${cx}" y2="${cy + half}" stroke="#ffffff" stroke-width="1.5" />`,
   ].join("\n");
 }
 

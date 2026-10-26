@@ -91,6 +91,16 @@ export interface Door {
   connects: [string, string];
 }
 
+export interface Window {
+  id: string;
+  /** Midpoint of the opening, in feet. */
+  x: number;
+  y: number;
+  /** "h" = window sits on a horizontal (front/back-facing) exterior wall, "v" = on a vertical (side-facing) one. */
+  orientation: "h" | "v";
+  width: number;
+}
+
 export interface FloorPlan {
   footprint: { w: number; h: number };
   totalAreaSqft: number;
@@ -100,6 +110,13 @@ export interface FloorPlan {
   warnings: string[];
   /** Placed furniture — always present (possibly empty) so every plan, generated or hand-built, has a stable shape. */
   furniture: FurnitureItem[];
+  /**
+   * Derived from the plan's own exterior-wall geometry (see lib/layout/windows.ts) —
+   * optional so a plan object saved/shared before this field existed (localStorage
+   * templates, old share links) still parses instead of crashing a renderer that
+   * expects it; every renderer reads it as `plan.windows ?? []`.
+   */
+  windows?: Window[];
   /** Optional override of the default exterior/interior wall color (materials picker). Undefined = the renderer's default. */
   wallColor?: string;
 }

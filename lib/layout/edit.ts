@@ -22,6 +22,7 @@
 import type { Door, FloorPlan, FurnitureItem, FurnitureType, Room, RoomType, Wall } from "./types";
 import { sharedEdgeOverlap } from "./geometry";
 import { makeFurniture } from "./furniture";
+import { computeWindows } from "./windows";
 
 const DOOR_WIDTH = 3;
 const MIN_DOOR_CLEARANCE = 2.2; // feet — minimum shared-edge length before we bother drawing a door opening
@@ -156,6 +157,10 @@ function recompute(rooms: Room[], source: FloorPlan): FloorPlan {
     doors,
     warnings,
     furniture: source.furniture,
+    // Re-derived from the fresh geometry every time, same as walls/doors — a
+    // dragged/resized room's windows never go stale on an exterior wall that
+    // no longer exists (or gains one that now does).
+    windows: computeWindows(rooms, walls, doors),
     wallColor: source.wallColor,
   };
 }

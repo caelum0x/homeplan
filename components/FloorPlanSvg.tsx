@@ -39,6 +39,10 @@ export function FloorPlanSvg({ plan }: FloorPlanSvgProps) {
           />
         ))}
 
+        {(plan.windows ?? []).map((win) => (
+          <WindowMark key={win.id} win={win} toPx={toPx} />
+        ))}
+
         {plan.doors.map((door) => (
           <DoorMark key={door.id} door={door} toPx={toPx} />
         ))}
@@ -88,4 +92,26 @@ function DoorMark({ door, toPx }: { door: { x: number; y: number; width: number;
     return <line x1={cx - half} y1={cy} x2={cx + half} y2={cy} stroke="#ffffff" strokeWidth={4} />;
   }
   return <line x1={cx} y1={cy - half} x2={cx} y2={cy + half} stroke="#ffffff" strokeWidth={4} />;
+}
+
+/** A window reads as a pale blue bar with a thin white mullion line, set into the exterior wall — visually distinct from a door's plain white gap. */
+function WindowMark({ win, toPx }: { win: { x: number; y: number; width: number; orientation: "h" | "v" }; toPx: (ft: number) => number }) {
+  const cx = toPx(win.x);
+  const cy = toPx(win.y);
+  const half = toPx(win.width) / 2;
+
+  if (win.orientation === "h") {
+    return (
+      <>
+        <line x1={cx - half} y1={cy} x2={cx + half} y2={cy} stroke="#7fb3d9" strokeWidth={5} />
+        <line x1={cx - half} y1={cy} x2={cx + half} y2={cy} stroke="#ffffff" strokeWidth={1.5} />
+      </>
+    );
+  }
+  return (
+    <>
+      <line x1={cx} y1={cy - half} x2={cx} y2={cy + half} stroke="#7fb3d9" strokeWidth={5} />
+      <line x1={cx} y1={cy - half} x2={cx} y2={cy + half} stroke="#ffffff" strokeWidth={1.5} />
+    </>
+  );
 }

@@ -1,53 +1,217 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 515 400" width="515" height="400">
-<rect width="515" height="400" fill="#ffffff" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 410 505" width="410" height="505">
+<rect width="410" height="505" fill="#ffffff" />
 <g transform="translate(40, 40)">
-<rect x="0" y="0" width="43" height="120" fill="#e8e3d8" stroke="#c9c9c9" stroke-width="1" />
-<text x="21.5" y="54" text-anchor="middle" font-size="9" font-weight="600" fill="#2b2b2b">Entry</text>
-<text x="21.5" y="70" text-anchor="middle" font-size="7" fill="#5a5a5a">4.3' x 12.0' (51.5 sqft)</text>
-<rect x="43" y="0" width="392" height="120" fill="#eef2ec" stroke="#c9c9c9" stroke-width="1" />
-<text x="239" y="54" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Great Room (Living + Kitchen + Dining)</text>
-<text x="239" y="70" text-anchor="middle" font-size="11" fill="#5a5a5a">39.2' x 12.0' (470.5 sqft)</text>
-<rect x="0" y="240" width="313" height="80" fill="#e4eef2" stroke="#c9c9c9" stroke-width="1" />
-<text x="156.5" y="274" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Primary Bedroom</text>
-<text x="156.5" y="290" text-anchor="middle" font-size="11" fill="#5a5a5a">31.3' x 8.0' (250.6 sqft)</text>
-<rect x="0" y="120" width="183" height="85" fill="#e9f1f4" stroke="#c9c9c9" stroke-width="1" />
-<text x="91.5" y="156.5" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Bedroom 2</text>
-<text x="91.5" y="172.5" text-anchor="middle" font-size="11" fill="#5a5a5a">18.3' x 8.5' (155.7 sqft)</text>
-<rect x="183" y="120" width="183" height="85" fill="#e9f1f4" stroke="#c9c9c9" stroke-width="1" />
-<text x="274.5" y="156.5" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Bedroom 3</text>
-<text x="274.5" y="172.5" text-anchor="middle" font-size="11" fill="#5a5a5a">18.3' x 8.5' (155.7 sqft)</text>
-<rect x="313" y="240" width="122" height="80" fill="#dbe9ea" stroke="#c9c9c9" stroke-width="1" />
-<text x="374" y="274" text-anchor="middle" font-size="12.2" font-weight="600" fill="#2b2b2b">Primary Bath</text>
-<text x="374" y="290" text-anchor="middle" font-size="10.2" fill="#5a5a5a">12.2' x 8.0' (97.4 sqft)</text>
-<rect x="366" y="120" width="69" height="85" fill="#e2eeef" stroke="#c9c9c9" stroke-width="1" />
-<text x="400.5" y="156.5" text-anchor="middle" font-size="9" font-weight="600" fill="#2b2b2b">Bathroom</text>
-<text x="400.5" y="172.5" text-anchor="middle" font-size="7" fill="#5a5a5a">6.9' x 8.5' (58.4 sqft)</text>
-<rect x="0" y="205" width="435" height="35" fill="#f6f5f2" stroke="#c9c9c9" stroke-width="1" />
-<text x="217.5" y="216.5" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Hallway</text>
-<text x="217.5" y="232.5" text-anchor="middle" font-size="11" fill="#5a5a5a">43.5' x 3.5' (152.3 sqft)</text>
-<line x1="0" y1="0" x2="435" y2="0" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
-<line x1="0" y1="320" x2="435" y2="320" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
-<line x1="0" y1="0" x2="0" y2="320" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
-<line x1="435" y1="0" x2="435" y2="320" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
-<line x1="42.88732394366196" y1="0" x2="42.88732394366196" y2="120" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="0" y1="120" x2="42.88732394366196" y2="120" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="42.88732394366196" y1="120" x2="183.15789473684208" y2="120" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="183.15789473684214" y1="120" x2="366.31578947368416" y2="120" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="366.3157894736841" y1="120" x2="435" y2="120" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="313.2" y1="240" x2="313.2" y2="320" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="0" y1="240" x2="313.2" y2="240" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="183.15789473684208" y1="120" x2="183.15789473684208" y2="205" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="0" y1="205" x2="183.15789473684208" y2="205" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="366.31578947368416" y1="120" x2="366.31578947368416" y2="205" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="183.15789473684214" y1="205" x2="366.31578947368416" y2="205" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="313.19999999999993" y1="240" x2="435" y2="240" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="366.3157894736841" y1="205" x2="435" y2="205" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="42.88732394366196" y1="45" x2="42.88732394366196" y2="75" stroke="#ffffff" stroke-width="4" />
-<line x1="76.57894736842104" y1="205" x2="106.57894736842104" y2="205" stroke="#ffffff" stroke-width="4" />
-<line x1="259.7368421052631" y1="205" x2="289.7368421052631" y2="205" stroke="#ffffff" stroke-width="4" />
-<line x1="385.6578947368421" y1="205" x2="415.6578947368421" y2="205" stroke="#ffffff" stroke-width="4" />
-<line x1="141.6" y1="240" x2="171.6" y2="240" stroke="#ffffff" stroke-width="4" />
-<line x1="313.2" y1="265" x2="313.2" y2="295" stroke="#ffffff" stroke-width="4" />
-<line x1="6.443661971830981" y1="0" x2="36.44366197183098" y2="0" stroke="#ffffff" stroke-width="4" />
+<rect x="0" y="0" width="330" height="65" fill="#e8e3d8" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_entry"><rect x="0" y="0" width="330" height="65" /></clipPath>
+<g clip-path="url(#clip_entry)">
+<text x="165" y="17" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Entry</text>
+<text x="165" y="32" text-anchor="middle" font-size="11" fill="#5a5a5a">33.0' x 6.5' (214.5 sqft)</text>
+</g>
+<rect x="0" y="65" width="330" height="95" fill="#eef2ec" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_great_room"><rect x="0" y="65" width="330" height="95" /></clipPath>
+<g clip-path="url(#clip_great_room)">
+<text x="165" y="82" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Great Room (Living + Kitchen + Dining)</text>
+<text x="165" y="97" text-anchor="middle" font-size="11" fill="#5a5a5a">33.0' x 9.5' (313.5 sqft)</text>
+</g>
+<rect x="0" y="320" width="237.59999999999997" height="105" fill="#e4eef2" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_bedroom_1"><rect x="0" y="320" width="237.59999999999997" height="105" /></clipPath>
+<g clip-path="url(#clip_bedroom_1)">
+<text x="118.79999999999998" y="337" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Primary Bedroom</text>
+<text x="118.79999999999998" y="352" text-anchor="middle" font-size="11" fill="#5a5a5a">23.8' x 10.5' (249.5 sqft)</text>
+</g>
+<rect x="0" y="160" width="138.94736842105263" height="125" fill="#e9f1f4" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_bedroom_2"><rect x="0" y="160" width="138.94736842105263" height="125" /></clipPath>
+<g clip-path="url(#clip_bedroom_2)">
+<text x="69.47368421052632" y="177" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Bedroom 2</text>
+<text x="69.47368421052632" y="192" text-anchor="middle" font-size="11" fill="#5a5a5a">13.9' x 12.5' (173.7 sqft)</text>
+</g>
+<rect x="138.94736842105263" y="160" width="138.94736842105263" height="125" fill="#e9f1f4" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_bedroom_3"><rect x="138.94736842105263" y="160" width="138.94736842105263" height="125" /></clipPath>
+<g clip-path="url(#clip_bedroom_3)">
+<text x="208.42105263157896" y="177" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Bedroom 3</text>
+<text x="208.42105263157896" y="192" text-anchor="middle" font-size="11" fill="#5a5a5a">13.9' x 12.5' (173.7 sqft)</text>
+</g>
+<rect x="237.59999999999997" y="320" width="92.4" height="105" fill="#dbe9ea" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_bath_primary"><rect x="237.59999999999997" y="320" width="92.4" height="105" /></clipPath>
+<g clip-path="url(#clip_bath_primary)">
+<text x="283.79999999999995" y="333.2" text-anchor="middle" font-size="9.2" font-weight="600" fill="#2b2b2b">Primary Bath</text>
+<text x="283.79999999999995" y="344.4" text-anchor="middle" font-size="7.199999999999999" fill="#5a5a5a">9.2' x 10.5' (97 sqft)</text>
+</g>
+<rect x="277.89473684210526" y="210" width="52.10526315789474" height="75" fill="#e2eeef" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_bath_shared_1"><rect x="277.89473684210526" y="210" width="52.10526315789474" height="75" /></clipPath>
+<g clip-path="url(#clip_bath_shared_1)">
+<text x="303.9473684210526" y="223" text-anchor="middle" font-size="9" font-weight="600" fill="#2b2b2b">Bathroom</text>
+<text x="303.9473684210526" y="234" text-anchor="middle" font-size="7" fill="#5a5a5a">5.2' x 7.5' (39.1 sqft)</text>
+</g>
+<rect x="277.89473684210526" y="160" width="52.10526315789474" height="50" fill="#ececec" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_bath_shared_1_closet"><rect x="277.89473684210526" y="160" width="52.10526315789474" height="50" /></clipPath>
+<g clip-path="url(#clip_bath_shared_1_closet)">
+<text x="303.9473684210526" y="173" text-anchor="middle" font-size="9" font-weight="600" fill="#2b2b2b">Closet</text>
+<text x="303.9473684210526" y="184" text-anchor="middle" font-size="7" fill="#5a5a5a">5.2' x 5.0' (26.1 sqft)</text>
+</g>
+<rect x="0" y="285" width="330" height="35" fill="#f6f5f2" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_hallway"><rect x="0" y="285" width="330" height="35" /></clipPath>
+<g clip-path="url(#clip_hallway)">
+<text x="165" y="302" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Hallway</text>
+<text x="165" y="317" text-anchor="middle" font-size="11" fill="#5a5a5a">33.0' x 3.5' (115.5 sqft)</text>
+</g>
+<line x1="0" y1="0" x2="330" y2="0" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="0" y1="425" x2="330" y2="425" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="0" y1="0" x2="0" y2="425" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="330" y1="0" x2="330" y2="425" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="0" y1="65" x2="330" y2="65" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="0" y1="160" x2="138.94736842105263" y2="160" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="138.94736842105266" y1="160" x2="277.89473684210526" y2="160" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="277.89473684210526" y1="160" x2="330" y2="160" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="237.59999999999997" y1="320" x2="237.59999999999997" y2="425" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="0" y1="320" x2="237.59999999999997" y2="320" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="138.94736842105263" y1="160" x2="138.94736842105263" y2="285" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="0" y1="285" x2="138.94736842105263" y2="285" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="277.89473684210526" y1="210" x2="277.89473684210526" y2="285" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="277.89473684210526" y1="160" x2="277.89473684210526" y2="210" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="138.94736842105266" y1="285" x2="277.89473684210526" y2="285" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="237.59999999999997" y1="320" x2="330" y2="320" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="277.89473684210526" y1="210" x2="330" y2="210" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="277.89473684210526" y1="285" x2="330" y2="285" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="77.4" y1="0" x2="107.4" y2="0" stroke="#7fb3d9" stroke-width="5" />
+<line x1="77.4" y1="0" x2="107.4" y2="0" stroke="#ffffff" stroke-width="1.5" />
+<line x1="222.59999999999997" y1="0" x2="252.59999999999997" y2="0" stroke="#7fb3d9" stroke-width="5" />
+<line x1="222.59999999999997" y1="0" x2="252.59999999999997" y2="0" stroke="#ffffff" stroke-width="1.5" />
+<line x1="0" y1="17.5" x2="0" y2="47.5" stroke="#7fb3d9" stroke-width="5" />
+<line x1="0" y1="17.5" x2="0" y2="47.5" stroke="#ffffff" stroke-width="1.5" />
+<line x1="330" y1="17.5" x2="330" y2="47.5" stroke="#7fb3d9" stroke-width="5" />
+<line x1="330" y1="17.5" x2="330" y2="47.5" stroke="#ffffff" stroke-width="1.5" />
+<line x1="0" y1="97.5" x2="0" y2="127.5" stroke="#7fb3d9" stroke-width="5" />
+<line x1="0" y1="97.5" x2="0" y2="127.5" stroke="#ffffff" stroke-width="1.5" />
+<line x1="330" y1="97.5" x2="330" y2="127.5" stroke="#7fb3d9" stroke-width="5" />
+<line x1="330" y1="97.5" x2="330" y2="127.5" stroke="#ffffff" stroke-width="1.5" />
+<line x1="51.528000000000006" y1="425" x2="81.528" y2="425" stroke="#7fb3d9" stroke-width="5" />
+<line x1="51.528000000000006" y1="425" x2="81.528" y2="425" stroke="#ffffff" stroke-width="1.5" />
+<line x1="156.072" y1="425" x2="186.072" y2="425" stroke="#7fb3d9" stroke-width="5" />
+<line x1="156.072" y1="425" x2="186.072" y2="425" stroke="#ffffff" stroke-width="1.5" />
+<line x1="0" y1="357.5" x2="0" y2="387.5" stroke="#7fb3d9" stroke-width="5" />
+<line x1="0" y1="357.5" x2="0" y2="387.5" stroke="#ffffff" stroke-width="1.5" />
+<line x1="0" y1="207.5" x2="0" y2="237.5" stroke="#7fb3d9" stroke-width="5" />
+<line x1="0" y1="207.5" x2="0" y2="237.5" stroke="#ffffff" stroke-width="1.5" />
+<line x1="268.8" y1="425" x2="298.8" y2="425" stroke="#7fb3d9" stroke-width="5" />
+<line x1="268.8" y1="425" x2="298.8" y2="425" stroke="#ffffff" stroke-width="1.5" />
+<line x1="330" y1="357.5" x2="330" y2="387.5" stroke="#7fb3d9" stroke-width="5" />
+<line x1="330" y1="357.5" x2="330" y2="387.5" stroke="#ffffff" stroke-width="1.5" />
+<line x1="330" y1="232.5" x2="330" y2="262.5" stroke="#7fb3d9" stroke-width="5" />
+<line x1="330" y1="232.5" x2="330" y2="262.5" stroke="#ffffff" stroke-width="1.5" />
+<line x1="150" y1="65" x2="180" y2="65" stroke="#ffffff" stroke-width="4" />
+<line x1="54.473684210526315" y1="285" x2="84.47368421052632" y2="285" stroke="#ffffff" stroke-width="4" />
+<line x1="193.42105263157896" y1="285" x2="223.42105263157896" y2="285" stroke="#ffffff" stroke-width="4" />
+<line x1="288.94736842105266" y1="285" x2="318.94736842105266" y2="285" stroke="#ffffff" stroke-width="4" />
+<line x1="103.79999999999998" y1="320" x2="133.79999999999998" y2="320" stroke="#ffffff" stroke-width="4" />
+<line x1="237.59999999999997" y1="357.5" x2="237.59999999999997" y2="387.5" stroke="#ffffff" stroke-width="4" />
+<line x1="288.94736842105266" y1="210" x2="318.94736842105266" y2="210" stroke="#ffffff" stroke-width="4" />
+<line x1="150" y1="0" x2="180" y2="0" stroke="#ffffff" stroke-width="4" />
+<g transform="translate(4, 98) rotate(0, 35, 15)">
+<rect x="0" y="0" width="70" height="30" fill="#a9b9ce" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="0" y="0" width="70" height="6.6" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+<rect x="0" y="0" width="7" height="30" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+<rect x="63" y="0" width="7" height="30" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+</g>
+<g transform="translate(78, 98) rotate(0, 17.5, 10)">
+<rect x="0" y="0" width="35" height="20" fill="#c7b299" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="2.8000000000000003" y="1.6" width="29.4" height="16.8" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+</g>
+<g transform="translate(117.00000000000001, 98) rotate(0, 22.5, 6.5)">
+<rect x="0" y="0" width="45" height="13" fill="#8d8d8d" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<line x1="22.5" y1="0" x2="22.5" y2="13" stroke="#5a5a5a" stroke-width="1" />
+<line x1="0" y1="6.5" x2="45" y2="6.5" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(166, 98) rotate(0, 30, 20)">
+<rect x="0" y="0" width="60" height="40" fill="#d8cdb8" fill-opacity="0.5" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="3.5999999999999996" y="2.4" width="52.8" height="35.2" fill="none" stroke="#5a5a5a" stroke-width="1" rx="2" stroke-dasharray="4 3" />
+</g>
+<g transform="translate(230, 98) rotate(0, 27.5, 16)">
+<rect x="0" y="0" width="55" height="32" fill="#c7b299" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="4.4" y="2.56" width="46.199999999999996" height="26.88" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+</g>
+<g transform="translate(4, 126) rotate(0, 27.5, 15)">
+<rect x="0" y="0" width="55" height="30" fill="#cfc6b8" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<line x1="27.5" y1="3" x2="27.5" y2="27" stroke="#5a5a5a" stroke-width="1" />
+<rect x="5.5" y="3" width="44" height="24" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+</g>
+<g transform="translate(289, 98) rotate(0, 14, 13)">
+<rect x="0" y="0" width="28" height="26" fill="#c7cdd1" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<line x1="0" y1="7.8" x2="28" y2="7.8" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(4, 134) rotate(0, 12.5, 11)">
+<rect x="0" y="0" width="25" height="22" fill="#9aa0a4" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<circle cx="7.000000000000001" cy="6.6" r="2.6399999999999997" fill="none" stroke="#5a5a5a" stroke-width="1" />
+<circle cx="18" cy="6.6" r="2.6399999999999997" fill="none" stroke="#5a5a5a" stroke-width="1" />
+<circle cx="7.000000000000001" cy="15.399999999999999" r="2.6399999999999997" fill="none" stroke="#5a5a5a" stroke-width="1" />
+<circle cx="18" cy="15.399999999999999" r="2.6399999999999997" fill="none" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(4, 353) rotate(0, 25, 32.5)">
+<rect x="0" y="0" width="50" height="65" fill="#b7c9d9" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="4" y="3.9" width="18" height="11.7" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+<rect x="28.000000000000004" y="3.9" width="18" height="11.7" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+<line x1="0" y1="20.8" x2="50" y2="20.8" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(58.00000000000001, 353) rotate(0, 8, 8)">
+<rect x="0" y="0" width="16" height="16" fill="#ad9a82" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<circle cx="8" cy="8" r="1.92" fill="none" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(78, 353) rotate(0, 20, 10)">
+<rect x="0" y="0" width="40" height="20" fill="#ad9a82" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<line x1="20" y1="0" x2="20" y2="20" stroke="#5a5a5a" stroke-width="1" />
+<line x1="0" y1="10" x2="40" y2="10" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(4, 193) rotate(0, 25, 32.5)">
+<rect x="0" y="0" width="50" height="65" fill="#b7c9d9" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="4" y="3.9" width="18" height="11.7" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+<rect x="28.000000000000004" y="3.9" width="18" height="11.7" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+<line x1="0" y1="20.8" x2="50" y2="20.8" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(58.00000000000001, 193) rotate(0, 8, 8)">
+<rect x="0" y="0" width="16" height="16" fill="#ad9a82" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<circle cx="8" cy="8" r="1.92" fill="none" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(78, 193) rotate(0, 20, 10)">
+<rect x="0" y="0" width="40" height="20" fill="#ad9a82" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<line x1="20" y1="0" x2="20" y2="20" stroke="#5a5a5a" stroke-width="1" />
+<line x1="0" y1="10" x2="40" y2="10" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(142.94736842105263, 193) rotate(0, 25, 32.5)">
+<rect x="0" y="0" width="50" height="65" fill="#b7c9d9" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="4" y="3.9" width="18" height="11.7" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+<rect x="28.000000000000004" y="3.9" width="18" height="11.7" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+<line x1="0" y1="20.8" x2="50" y2="20.8" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(196.94736842105266, 193) rotate(0, 8, 8)">
+<rect x="0" y="0" width="16" height="16" fill="#ad9a82" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<circle cx="8" cy="8" r="1.92" fill="none" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(216.94736842105266, 193) rotate(0, 20, 10)">
+<rect x="0" y="0" width="40" height="20" fill="#ad9a82" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<line x1="20" y1="0" x2="20" y2="20" stroke="#5a5a5a" stroke-width="1" />
+<line x1="0" y1="10" x2="40" y2="10" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(241.59999999999997, 353) rotate(0, 8, 11.5)">
+<rect x="0" y="0" width="16" height="23" fill="#e2eeef" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="1.92" y="0.69" width="12.16" height="6.8999999999999995" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+<circle cx="8" cy="15.180000000000001" r="4.8" fill="none" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(261.59999999999997, 353) rotate(0, 10, 8)">
+<rect x="0" y="0" width="20" height="16" fill="#c9dde0" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="3.5999999999999996" y="3.2" width="12.8" height="9.6" fill="none" stroke="#5a5a5a" stroke-width="1" rx="1.28" />
+</g>
+<g transform="translate(285.59999999999997, 353) rotate(0, 13, 25)">
+<rect x="0" y="0" width="26" height="50" fill="#d9eced" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="2.6" y="3" width="20.8" height="44" fill="none" stroke="#5a5a5a" stroke-width="1" rx="7.8" />
+</g>
+<g transform="translate(281.89473684210526, 243) rotate(0, 8, 11.5)">
+<rect x="0" y="0" width="16" height="23" fill="#e2eeef" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="1.92" y="0.69" width="12.16" height="6.8999999999999995" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />
+<circle cx="8" cy="15.180000000000001" r="4.8" fill="none" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(301.89473684210526, 243) rotate(0, 10, 8)">
+<rect x="0" y="0" width="20" height="16" fill="#c9dde0" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<rect x="3.5999999999999996" y="3.2" width="12.8" height="9.6" fill="none" stroke="#5a5a5a" stroke-width="1" rx="1.28" />
+</g>
 </g>
 </svg>

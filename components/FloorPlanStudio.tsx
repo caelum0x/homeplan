@@ -360,6 +360,23 @@ export function FloorPlanStudio({ plan, onChange, traceImageUrl }: FloorPlanStud
               />
             ))}
 
+            {(plan.windows ?? []).map((win) => {
+              const cx = toPx(win.x);
+              const cy = toPx(win.y);
+              const half = toPx(win.width) / 2;
+              return win.orientation === "h" ? (
+                <g key={win.id} style={{ pointerEvents: "none" }}>
+                  <line x1={cx - half} y1={cy} x2={cx + half} y2={cy} stroke="#7fb3d9" strokeWidth={5} />
+                  <line x1={cx - half} y1={cy} x2={cx + half} y2={cy} stroke="#ffffff" strokeWidth={1.5} />
+                </g>
+              ) : (
+                <g key={win.id} style={{ pointerEvents: "none" }}>
+                  <line x1={cx} y1={cy - half} x2={cx} y2={cy + half} stroke="#7fb3d9" strokeWidth={5} />
+                  <line x1={cx} y1={cy - half} x2={cx} y2={cy + half} stroke="#ffffff" strokeWidth={1.5} />
+                </g>
+              );
+            })}
+
             {plan.doors.map((door) => {
               const cx = toPx(door.x);
               const cy = toPx(door.y);

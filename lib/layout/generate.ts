@@ -1,7 +1,8 @@
-import type { BriefInput, Door, FloorPlan, Room, Wall } from "./types";
+import type { BriefInput, Door, FloorPlan, Room, RoomType, Wall } from "./types";
 import { buildRoomProgram, getMinArea, type ProgramRoom } from "./program";
 import { allocateLengths, layoutRow, sharedEdgeOverlap, type AllocItem, type Rect } from "./geometry";
 import { autoPlaceFurniture } from "./furniture";
+import { computeWindows } from "./windows";
 
 const HALLWAY_WIDTH = 3.5;
 const DOOR_WIDTH = 3;
@@ -21,6 +22,24 @@ const ASPECT_RATIO_DEEP = 0.78;
 const TWO_ROW_PRIVATE_THRESHOLD = 3;
 /** Width:depth ratio beyond which a bedroom/bathroom reads as an unrealistic sliver, not a usable room. */
 const MAX_SANE_ROOM_ASPECT = 2.2;
+/**
+ * Real foyer depth target (feet), not a full-row-depth column. Found by
+ * actually running the engine before this fix: every entry came out as a
+ * 4ft-wide column spanning the *entire* public-zone depth (e.g. 4' x 27' for
+ * a 6-bed estate) — a corridor shape, not a foyer, and never flagged because
+ * "entry" was (correctly, for its *width* axis) exempted from the sliver
+ * check. The real bug wasn't the aspect-ratio number, it was the
+ * orientation: a foyer should be shallow *front-to-back* and span width, not
+ * deep front-to-back and span almost no width. Fixed by giving the entry its
+ * own shallow full-width strip at the front of the public zone instead of
+ * forcing it into the same shared-depth column as every other public room.
+ */
+const ENTRY_DEPTH_TARGET = 7;
+const MIN_ENTRY_DEPTH = 4;
+/** Minimum depth left over after carving out a closet from a sliver room — below this, the split isn't worth doing and the honest aspect-ratio warning stays instead. */
+const CLOSET_MIN_DEPTH = 3;
+/** Room types where carving off a closet from a too-deep sliver is a real, common architectural pattern (primary suite + walk-in closet, bath + linen closet) rather than a cosmetic relabeling. */
+const SLIVER_SPLITTABLE_TYPES = new Set<RoomType>(["primary_bedroom", "bedroom", "primary_bath", "bath", "half_bath"]);
 
 export interface LayoutVariant {
   /** Stable key, also used as the React list key in the compare UI. */
@@ -85,6 +104,7 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
   const depth = roundTo(interiorArea / width, 0.5);
 
   const publicProgramRooms = [program.entry, ...program.publicRooms];
+  const otherPublicRooms = program.publicRooms; // everything but the entry — the entry gets its own shallow strip below, not a shared-depth column
   const privateProgramRooms = [...program.bedrooms, ...program.privateBaths];
 
   const publicIdeal = sumIdeal(publicProgramRooms);
@@ -95,22 +115,43 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
   const rooms: Room[] = [];
   const adjacency: Array<{ a: string; b: string }> = [];
 
-  // ---- Public zone: one row across the front, left to right in the order you'd actually walk through them.
-  const publicRow = layoutRow(publicProgramRooms.map(toAllocItem(publicDepth)), 0, 0, width, publicDepth);
+  // ---- Public zone: a shallow, full-width entry strip at the very front — a real
+  // foyer shape, not a thin column spanning the entire public-zone depth (see
+  // ENTRY_DEPTH_TARGET's comment for the real bug this replaced) — then the rest of
+  // the public rooms in a row behind it, left to right in the order you'd walk through.
+  const desiredEntryDepth = Math.min(ENTRY_DEPTH_TARGET, Math.max(MIN_ENTRY_DEPTH, publicDepth * 0.4));
+  const entryDepth = Math.min(roundTo(desiredEntryDepth, 0.5), Math.max(MIN_ENTRY_DEPTH, publicDepth - MIN_ENTRY_DEPTH));
+  const restDepth = publicDepth - entryDepth;
+
+  rooms.push(toRoom(program.entry, { x: 0, y: 0, w: width, h: entryDepth }));
+
+  const publicRow = layoutRow(otherPublicRooms.map(toAllocItem(restDepth)), 0, entryDepth, width, restDepth);
   if (!publicRow.feasible) {
     warnings.push(
-      "The public rooms (entry, living, kitchen, dining, office) don't comfortably fit this square footage. Sizes below are scaled down from a realistic minimum — increase total sqft or drop a room.",
+      "The public rooms (living, kitchen, dining, office) don't comfortably fit this square footage. Sizes below are scaled down from a realistic minimum — increase total sqft or drop a room.",
     );
   }
-  for (let i = 0; i < publicProgramRooms.length; i++) {
-    const p = publicProgramRooms[i];
-    rooms.push(toRoom(p, publicRow.rects.get(p.id)!));
-    if (i > 0) adjacency.push({ a: publicProgramRooms[i - 1].id, b: p.id });
+  // Same sliver-splitting fix as the private zone's bedrooms/bathrooms — a half
+  // bath (powder room) sharing a deep public row with a great room/kitchen hits the
+  // exact same "forced to the full row depth" problem.
+  const publicSplit = splitSliverRooms(otherPublicRooms, publicRow.rects, restDepth, "front");
+  for (let i = 0; i < otherPublicRooms.length; i++) {
+    const p = otherPublicRooms[i];
+    rooms.push(toRoom(p, publicSplit.rects.get(p.id)!));
+    if (i > 0) adjacency.push({ a: otherPublicRooms[i - 1].id, b: p.id });
+  }
+  for (const p of publicSplit.extraRooms) {
+    rooms.push(toRoom(p, publicSplit.rects.get(p.id)!));
+  }
+  adjacency.push(...publicSplit.extraAdjacency);
+  const lastPublicRoom = otherPublicRooms[otherPublicRooms.length - 1] ?? program.entry;
+  if (otherPublicRooms.length > 0) {
+    adjacency.push({ a: program.entry.id, b: otherPublicRooms[0].id });
   }
 
   // ---- Private zone: bedrooms + bathrooms, in one or two rows around a hallway.
   const privateZone = layoutPrivateZone(privateProgramRooms, width, publicDepth, privateDepth);
-  for (const p of privateProgramRooms) {
+  for (const p of [...privateProgramRooms, ...privateZone.extraRooms]) {
     rooms.push(toRoom(p, privateZone.rects.get(p.id)!));
   }
   adjacency.push(...privateZone.adjacency);
@@ -129,11 +170,18 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
     });
   }
   const publicToPrivateAnchor = privateZone.hallwayRect ? "hallway" : privateProgramRooms[0]?.id;
-  if (publicToPrivateAnchor && publicProgramRooms.length > 0) {
-    adjacency.push({ a: publicProgramRooms[publicProgramRooms.length - 1].id, b: publicToPrivateAnchor });
+  if (publicToPrivateAnchor) {
+    adjacency.push({ a: lastPublicRoom.id, b: publicToPrivateAnchor });
   }
 
-  // ---- Garage: attached as its own block beside the main footprint.
+  // ---- Garage: attached as its own block beside the main footprint, with a real
+  // interior door into whichever public room actually ends up against its shared
+  // wall (never the entry — the entry sits at the *front* of the house, the garage
+  // beside the *side*, so they never share an edge; the previous version declared
+  // an entry<->garage adjacency that never once produced a real door in testing,
+  // leaving every generated garage completely sealed off with no interior access
+  // at all — found by actually generating examples and reading the door list, not
+  // assumed from the code).
   let totalWidth = width;
   if (program.garage) {
     const garageDepth = Math.min(depth, roundTo(Math.sqrt(program.garage.idealArea * 1.6), 0.5));
@@ -149,7 +197,7 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
       areaSqft: round1(garageWidth * garageDepth),
     });
     totalWidth = width + garageWidth;
-    adjacency.push({ a: program.entry.id, b: program.garage.id });
+    adjacency.push({ a: lastPublicRoom.id, b: program.garage.id });
   }
 
   const { walls, doors } = buildWallsAndDoors(rooms, { width, depth }, adjacency);
@@ -166,6 +214,7 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
 
   checkMinimums(rooms, warnings);
   checkAspectRatios(rooms, warnings);
+  checkGarageAccess(rooms, doors, warnings);
 
   const totalAreaSqft = round1(rooms.reduce((s, r) => s + r.areaSqft, 0));
   const roundedRooms = rooms.map(roundRoom);
@@ -178,6 +227,7 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
     doors,
     warnings,
     furniture: autoPlaceFurniture(roundedRooms),
+    windows: computeWindows(roundedRooms, walls, doors),
   };
 }
 
@@ -210,11 +260,13 @@ interface PrivateZoneResult {
   adjacency: Array<{ a: string; b: string }>;
   hallwayRect: Rect | null;
   feasible: boolean;
+  /** Real new rooms (closets) carved out of a sliver bedroom/bath by splitSliverRooms — caller must add these to the final room list the same as any other ProgramRoom. */
+  extraRooms: ProgramRoom[];
 }
 
 function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: number, privateDepth: number): PrivateZoneResult {
   if (items.length === 0) {
-    return { rects: new Map(), adjacency: [], hallwayRect: null, feasible: true };
+    return { rects: new Map(), adjacency: [], hallwayRect: null, feasible: true, extraRooms: [] };
   }
 
   const primary = items.find((i) => i.type === "primary_bedroom")!;
@@ -230,10 +282,11 @@ function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: num
     const hallwayDepth = items.length > 1 ? Math.min(HALLWAY_WIDTH, privateDepth * 0.25) : 0;
     const rowDepth = privateDepth - hallwayDepth;
     const row = layoutRow(ordered.map(toAllocItem(rowDepth)), 0, publicDepth + hallwayDepth, width, rowDepth);
+    const split = splitSliverRooms(ordered, row.rects, rowDepth, "front");
     const hallwayId = hallwayDepth > 0 ? "hallway" : undefined;
-    const adjacency = buildSequentialAdjacency(ordered, ensuite, primary, hallwayId);
+    const adjacency = [...buildSequentialAdjacency(ordered, ensuite, primary, hallwayId), ...split.extraAdjacency];
     const hallwayRect = hallwayDepth > 0 ? { x: 0, y: publicDepth, w: width, h: hallwayDepth } : null;
-    return { rects: row.rects, adjacency, hallwayRect, feasible: row.feasible };
+    return { rects: split.rects, adjacency, hallwayRect, feasible: row.feasible, extraRooms: split.extraRooms };
   }
 
   // Keep the primary bedroom + ensuite together in the far (quieter) row,
@@ -286,10 +339,19 @@ function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: num
   const nearLayout = layoutRow(nearRow.map(toAllocItem(nearRowDepth)), 0, nearY, width, nearRowDepth);
   const farLayout = layoutRow(farRow.map(toAllocItem(farRowDepth)), 0, farY, width, farRowDepth);
 
-  const rects = new Map<string, Rect>([...nearLayout.rects, ...farLayout.rects]);
+  // Near row's hallway-adjacent edge is its *back* (hallway starts right after it);
+  // far row's hallway-adjacent edge is its *front* (hallway ends right before it) —
+  // this directional bookkeeping is what lets splitSliverRooms anchor each carved
+  // bath/closet toward the hallway side instead of toward the exterior wall.
+  const nearSplit = splitSliverRooms(nearRow, nearLayout.rects, nearRowDepth, "back");
+  const farSplit = splitSliverRooms(farRow, farLayout.rects, farRowDepth, "front");
+
+  const rects = new Map<string, Rect>([...nearSplit.rects, ...farSplit.rects]);
   const adjacency = [
     ...buildSequentialAdjacency(nearRow, ensuite, primary, "hallway"),
     ...buildSequentialAdjacency(farRow, ensuite, primary, "hallway"),
+    ...nearSplit.extraAdjacency,
+    ...farSplit.extraAdjacency,
   ];
 
   return {
@@ -297,7 +359,84 @@ function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: num
     adjacency,
     hallwayRect: { x: 0, y: hallwayY, w: width, h: HALLWAY_WIDTH },
     feasible: rowAlloc.feasible && nearLayout.feasible && farLayout.feasible,
+    extraRooms: [...nearSplit.extraRooms, ...farSplit.extraRooms],
   };
+}
+
+interface SliverSplitResult {
+  rects: Map<string, Rect>;
+  extraRooms: ProgramRoom[];
+  extraAdjacency: Array<{ a: string; b: string }>;
+}
+
+/**
+ * Real structural fix for the recurring "sliver bedroom/bathroom" bug found by
+ * actually generating examples: every bedroom/bath forced to share a row's full
+ * depth comes out as a thin column whenever its ideal area is much smaller than
+ * its row-mates' (a 45 sqft bathroom sharing a 24ft-deep row with bedrooms
+ * inevitably becomes ~5' x 24', a 4.8:1 sliver). The old fix only *warned* about
+ * this. This one actually carves the room into two real rooms that together fill
+ * the same footprint: the main room at a sane, shallower depth anchored toward
+ * the hallway (quick access), and the leftover strip as a genuine small closet
+ * for the same room — primary suite bath + walk-in closet, or bedroom + closet,
+ * is a real, common floor-plan pattern, not a cosmetic relabeling of wasted
+ * space. Only applied when it actually improves the shape (see the aspect-ratio
+ * guard below) — otherwise the honest "unrealistic shape" warning stays, rather
+ * than silently shipping a worse split.
+ */
+function splitSliverRooms(
+  items: ProgramRoom[],
+  rects: Map<string, Rect>,
+  rowDepth: number,
+  hallwaySide: "front" | "back",
+): SliverSplitResult {
+  const nextRects = new Map(rects);
+  const extraRooms: ProgramRoom[] = [];
+  const extraAdjacency: Array<{ a: string; b: string }> = [];
+
+  for (const item of items) {
+    if (!SLIVER_SPLITTABLE_TYPES.has(item.type)) continue;
+    const rect = nextRects.get(item.id);
+    if (!rect) continue;
+
+    const originalLong = Math.max(rect.w, rect.h);
+    const originalShort = Math.min(rect.w, rect.h);
+    if (originalShort <= 0 || originalLong / originalShort <= MAX_SANE_ROOM_ASPECT) continue; // not a sliver, leave it alone
+
+    // Every row item spans the row's full depth today, so rect.h === rowDepth and
+    // rect.w is the (too-narrow) width — the only axis worth carving is depth.
+    const targetDepth = Math.min(rowDepth - CLOSET_MIN_DEPTH, roundTo(Math.sqrt(item.idealArea * 1.3), 0.5));
+    const closetDepth = roundTo(rowDepth - targetDepth, 0.5);
+    if (targetDepth < item.minWidth || closetDepth < CLOSET_MIN_DEPTH) continue; // not enough depth to split cleanly — keep the honest warning instead
+
+    const mainAspect = Math.max(rect.w, targetDepth) / Math.min(rect.w, targetDepth);
+    if (mainAspect >= originalLong / originalShort) continue; // the split wouldn't actually improve the shape — don't bother
+
+    const mainY = hallwaySide === "front" ? rect.y : rect.y + closetDepth;
+    const closetY = hallwaySide === "front" ? rect.y + targetDepth : rect.y;
+
+    nextRects.set(item.id, { x: rect.x, y: mainY, w: rect.w, h: targetDepth });
+    const closetId = `${item.id}_closet`;
+    nextRects.set(closetId, { x: rect.x, y: closetY, w: rect.w, h: closetDepth });
+    extraRooms.push({
+      id: closetId,
+      type: "closet",
+      // A short, generic label on purpose: these closets are narrow by construction
+      // (the leftover strip of a too-deep room), and sit directly next to their own
+      // room on the plan, so "Bathroom 1 Closet" both overflows a 5-6ft-wide room's
+      // label text (found by actually rendering a real example and looking at it —
+      // the room-renderer's clipPath truncated it into unreadable mid-word garbage)
+      // and is redundant with the adjacent room it's already attached to.
+      label: "Closet",
+      idealArea: rect.w * closetDepth,
+      minArea: getMinArea("closet"),
+      minWidth: 3,
+      zone: item.zone,
+    });
+    extraAdjacency.push({ a: item.id, b: closetId });
+  }
+
+  return { rects: nextRects, extraRooms, extraAdjacency };
 }
 
 /** Every bedroom gets a hallway door; the ensuite bath connects only to its own bedroom, never the hallway. */
@@ -385,8 +524,14 @@ function buildWallsAndDoors(
   return { walls, doors };
 }
 
-/** Room types where a long, shallow shape is a real bug, not a normal open-plan room. */
-const ASPECT_CHECKED_TYPES = new Set(["primary_bedroom", "bedroom", "primary_bath", "bath", "half_bath", "closet"]);
+/**
+ * Room types where a long, shallow shape is a real bug, not a normal open-plan room.
+ * Closets are deliberately exempt: a long, narrow walk-in/reach-in closet (e.g. the
+ * leftover strip splitSliverRooms carves off a too-deep bath/bedroom) is a real,
+ * normal closet shape — unlike a bathroom or bedroom, a closet has no fixture or
+ * furniture-clearance requirement that a narrow width breaks.
+ */
+const ASPECT_CHECKED_TYPES = new Set(["primary_bedroom", "bedroom", "primary_bath", "bath", "half_bath"]);
 
 /**
  * Open-plan great rooms/kitchens/entries are legitimately long and shallow in real houses —
@@ -404,6 +549,22 @@ function checkAspectRatios(rooms: Room[], warnings: string[]) {
         `${room.label} is an unrealistic shape for its area (${round1(room.w)}' × ${round1(room.h)}', ${round1(long / short)}:1) — increase total sqft or reduce room count so it can be laid out as a usable room.`,
       );
     }
+  }
+}
+
+/**
+ * Honest fallback for the garage-door fix above: if the garage still ends up with
+ * no real interior door in some geometry this session's fix didn't anticipate,
+ * say so plainly instead of silently shipping a sealed-off garage — the exact
+ * failure mode this check exists to catch (found by actually generating examples
+ * and reading the real door list, not assumed from the code).
+ */
+function checkGarageAccess(rooms: Room[], doors: Door[], warnings: string[]) {
+  const garage = rooms.find((r) => r.type === "garage");
+  if (!garage) return;
+  const hasInteriorDoor = doors.some((d) => d.connects.includes(garage.id) && !d.connects.includes("exterior"));
+  if (!hasInteriorDoor) {
+    warnings.push(`${garage.label} has no interior door to the rest of the house in this layout — try a different variant or sqft.`);
   }
 }
 
