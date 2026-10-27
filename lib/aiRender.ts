@@ -1,14 +1,21 @@
-// AI photorealistic rendering via Pollinations.ai — a real, genuinely free,
-// no-API-key image generation service (confirmed live: `GET
+// Style moodboard via Pollinations.ai — a real, genuinely free, no-API-key
+// image generation service (confirmed live: `GET
 // https://image.pollinations.ai/prompt/...` returns a real JPEG, no auth
 // header, no account). Free tier is rate-limited to 1 image per 45 seconds
 // per IP and includes a small Pollinations watermark — both honestly
-// surfaced in the UI rather than hidden. This is the real free-tier path
-// the task asked to check for before concluding AI rendering was blocked;
-// the previously-flagged pascalorg/editor ("Pascal") BIM engine remains a
-// separate, much larger fast-follow for true geometry-aware 3D rendering
-// (see plans/homeplan.md) — this is an image-generation-based render, not a
-// render of the exact 3D scene.
+// surfaced in the UI rather than hidden.
+//
+// Deliberately NOT framed as "AI render" or "photorealistic render of your
+// plan": verified 2026-10-27 that Pollinations' free "Classic API" has no
+// image-to-image or depth-conditioned mode — its img2img "kontext" model
+// returns a real 403 ("kontext isn't part of the Classic API. Use it with a
+// pollen key") requiring a paid account. With no free way to ground the
+// output in this plan's actual 3D geometry, the output is a style-matched
+// interior image from the room list/sqft/style only — real inspiration, not
+// a preview of this specific house. The previously-flagged pascalorg/editor
+// ("Pascal") BIM engine remains a separate fast-follow for true
+// geometry-aware 3D rendering (see plans/homeplan.md) if a paid image API
+// is ever added.
 
 import type { FloorPlan } from "./layout/types";
 

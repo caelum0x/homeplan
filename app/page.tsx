@@ -413,7 +413,7 @@ export default function Home() {
                     onClick={() => setViewMode(mode)}
                     className={`segmented-btn ${viewMode === mode ? "active" : ""}`}
                   >
-                    {mode === "plan" ? "View" : mode === "studio" ? "Edit (Studio)" : mode === "3d" ? "3D view" : "AI Render"}
+                    {mode === "plan" ? "View" : mode === "studio" ? "Edit (Studio)" : mode === "3d" ? "3D view" : "Style Moodboard"}
                   </button>
                 ))}
               </div>
@@ -511,8 +511,8 @@ export default function Home() {
           </FeatureCard>
           <FeatureCard icon={<DownloadIcon />} title="Export">
             {exportGated
-              ? "PNG, 3D massing, and AI renders are free and unlimited here. PDF and DXF export are part of HomePlan Pro on this hosted site — fully free if you self-host."
-              : "PDF, DXF, PNG, 3D massing, and AI renders — all free, unlimited."}
+              ? "PNG, 3D massing, and style moodboards are free and unlimited here. PDF and DXF export are part of HomePlan Pro on this hosted site — fully free if you self-host."
+              : "PDF, DXF, PNG, 3D massing, and style moodboards — all free, unlimited."}
           </FeatureCard>
         </div>
       </div>
