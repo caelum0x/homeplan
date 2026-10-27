@@ -379,14 +379,13 @@ function buildFurnitureObject(item: FurnitureItem, spec: FurnitureSpec): THREE.O
 
 interface FloorPlan3DProps {
   plan: FloorPlan;
-  /** Initial camera placement, as multiples of the plan's diagonal — defaults match the
-   * in-app massing view exactly. Only overridden by the marketing hero's static capture
-   * (a steeper, closer "dollhouse" framing), never by the real in-app Studio/3D tab. */
+  /** Initial camera placement, as multiples of the plan's diagonal. Shared default used
+   * by both the in-app Studio 3D tab and the marketing hero capture (`public/hero-3d.png`
+   * is a screenshot of this same component) — keep enough margin here (model should not
+   * touch any frame edge) since neither caller currently overrides it. */
   cameraRadiusFactor?: number;
   cameraElevationFactor?: number;
-  /** Multiplier on the real 9ft wall height — defaults to 1 (the real in-app massing
-   * view). Only lowered by the marketing hero's static capture for a lighter, more
-   * open "dollhouse" read; never changes the real in-app Studio/3D tab. */
+  /** Multiplier on the real 9ft wall height — defaults to 1. */
   wallHeightFactor?: number;
 }
 
@@ -398,8 +397,8 @@ interface FloorPlan3DProps {
  */
 export function FloorPlan3D({
   plan,
-  cameraRadiusFactor = 0.58,
-  cameraElevationFactor = 0.95,
+  cameraRadiusFactor = 0.8,
+  cameraElevationFactor = 1.75,
   wallHeightFactor = 1,
 }: FloorPlan3DProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
