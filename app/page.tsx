@@ -35,12 +35,18 @@ type ViewMode = "plan" | "studio" | "3d" | "render";
 type Stage = "idle" | "loading" | "variants" | "editing";
 type EntryMode = "describe" | "templates" | "upload";
 
+class ProRequiredError extends Error {}
+
 async function downloadExport(plan: FloorPlan, format: "pdf" | "dxf") {
   const res = await fetch(`/api/export/${format}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ plan }),
   });
+  if (res.status === 402) {
+    const data = await res.json().catch(() => ({}));
+    throw new ProRequiredError(data.message ?? "PDF and DXF export require HomePlan Pro on this hosted site.");
+  }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error ?? `Export failed (${res.status}).`);
@@ -76,6 +82,8 @@ export default function Home() {
   const [traceImageUrl, setTraceImageUrl] = useState<string | null>(null);
   const [saveTemplateName, setSaveTemplateName] = useState("");
   const [templateSaved, setTemplateSaved] = useState(false);
+  const [proStatus, setProStatus] = useState<{ isPro: boolean; hosted: boolean } | null>(null);
+  const [exportUpgradeNeeded, setExportUpgradeNeeded] = useState(false);
 
   const heroBedCount = heroExample.rooms.filter((r) => r.type === "bedroom" || r.type === "primary_bedroom").length;
   const heroBathCount = heroExample.rooms.filter((r) => r.type === "bath" || r.type === "primary_bath" || r.type === "half_bath").length;
@@ -89,6 +97,18 @@ export default function Home() {
       setStage("editing");
     }
   }, []);
+
+  // Tells the UI whether PDF/DXF export is actually gated here (hosted only) and
+  // whether this browser already has a verified Pro session, so the export
+  // buttons/feature copy reflect reality instead of always claiming "all free".
+  useEffect(() => {
+    fetch("/api/pro/me")
+      .then((res) => res.json())
+      .then((data) => setProStatus({ isPro: Boolean(data.isPro), hosted: Boolean(data.hosted) }))
+      .catch(() => setProStatus({ isPro: false, hosted: false }));
+  }, []);
+
+  const exportGated = Boolean(proStatus?.hosted && !proStatus?.isPro);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -128,10 +148,12 @@ export default function Home() {
     if (!plan) return;
     setExporting(format);
     setError(null);
+    setExportUpgradeNeeded(false);
     try {
       if (format === "png") await downloadPlanAsPng(plan);
       else await downloadExport(plan, format);
     } catch (err) {
+      if (err instanceof ProRequiredError) setExportUpgradeNeeded(true);
       setError(err instanceof Error ? err.message : `Could not export ${format.toUpperCase()}.`);
     } finally {
       setExporting(null);
@@ -324,7 +346,15 @@ export default function Home() {
         {error && (
           <div className="alert alert-danger" role="alert" style={{ marginTop: 20 }}>
             <AlertIcon />
-            <span>{error}</span>
+            <span>
+              {error}
+              {exportUpgradeNeeded && (
+                <>
+                  {" "}
+                  <a href="#pricing">Get HomePlan Pro</a> or already subscribed? <a href="/pro/access">Claim access</a>.
+                </>
+              )}
+            </span>
           </div>
         )}
 
@@ -399,11 +429,11 @@ export default function Home() {
                 </button>
                 <button type="button" onClick={() => handleExport("pdf")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
                   <DownloadIcon />
-                  {exporting === "pdf" ? "Exporting…" : "PDF"}
+                  {exporting === "pdf" ? "Exporting…" : exportGated ? "PDF (Pro)" : "PDF"}
                 </button>
                 <button type="button" onClick={() => handleExport("dxf")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
                   <DownloadIcon />
-                  {exporting === "dxf" ? "Exporting…" : "DXF"}
+                  {exporting === "dxf" ? "Exporting…" : exportGated ? "DXF (Pro)" : "DXF"}
                 </button>
               </div>
             </div>
@@ -480,7 +510,9 @@ export default function Home() {
             Drag rooms in Studio, or type a change in plain language.
           </FeatureCard>
           <FeatureCard icon={<DownloadIcon />} title="Export">
-            PDF, DXF, PNG, 3D massing, and AI renders — all free, unlimited.
+            {exportGated
+              ? "PNG, 3D massing, and AI renders are free and unlimited here. PDF and DXF export are part of HomePlan Pro on this hosted site — fully free if you self-host."
+              : "PDF, DXF, PNG, 3D massing, and AI renders — all free, unlimited."}
           </FeatureCard>
         </div>
       </div>

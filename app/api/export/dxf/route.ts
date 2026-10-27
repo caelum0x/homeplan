@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { floorPlanToDxf } from "@/lib/exportDxf";
+import { isProRequest, PRO_REQUIRED_BODY } from "@/lib/proGate";
 import type { FloorPlan } from "@/lib/layout/types";
 
 interface ExportRequestBody {
@@ -7,6 +8,10 @@ interface ExportRequestBody {
 }
 
 export async function POST(request: Request) {
+  if (!(await isProRequest(request))) {
+    return NextResponse.json(PRO_REQUIRED_BODY, { status: 402 });
+  }
+
   let body: ExportRequestBody;
   try {
     body = await request.json();
