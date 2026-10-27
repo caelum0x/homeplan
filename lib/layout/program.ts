@@ -36,6 +36,10 @@ const IDEAL_AREA: Record<RoomType, number> = {
   office: 100,
   garage: 240,
   closet: 20,
+  // Not a budgeted room — the courtyard is sized as leftover footprint between
+  // the two wings (see generate.ts's layoutPrivateZoneCourtyard), never from
+  // this ideal-area table. 0 so it never competes with real rooms for budget.
+  courtyard: 0,
 };
 
 const MIN_AREA: Record<RoomType, number> = {
@@ -53,6 +57,7 @@ const MIN_AREA: Record<RoomType, number> = {
   office: 70,
   garage: 200,
   closet: 12,
+  courtyard: 0, // never checked against a minimum — see checkMinimums' explicit skip
 };
 
 const MIN_WIDTH: Record<RoomType, number> = {
@@ -70,6 +75,7 @@ const MIN_WIDTH: Record<RoomType, number> = {
   office: 8,
   garage: 11,
   closet: 3,
+  courtyard: 8, // unused by the allocator (courtyard is never passed through allocateLengths) — present only for Record<RoomType,...> completeness
 };
 
 export function getMinArea(type: RoomType): number {

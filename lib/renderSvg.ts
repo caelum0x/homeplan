@@ -17,6 +17,7 @@ export const ROOM_FILL: Partial<Record<RoomType, string>> = {
   office: "#ece6f2",
   garage: "#dfdfdc",
   closet: "#ececec",
+  courtyard: "#d7e6cf", // real open void — a garden-green tint, not a room shade
 };
 
 export const SVG_SCALE = 10; // px per foot

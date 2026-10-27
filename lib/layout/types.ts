@@ -15,7 +15,8 @@ export type RoomType =
   | "hallway"
   | "office"
   | "garage"
-  | "closet";
+  | "closet"
+  | "courtyard";
 
 export interface Room {
   id: string;

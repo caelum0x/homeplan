@@ -40,6 +40,12 @@ const MIN_ENTRY_DEPTH = 4;
 const CLOSET_MIN_DEPTH = 3;
 /** Room types where carving off a closet from a too-deep sliver is a real, common architectural pattern (primary suite + walk-in closet, bath + linen closet) rather than a cosmetic relabeling. */
 const SLIVER_SPLITTABLE_TYPES = new Set<RoomType>(["primary_bedroom", "bedroom", "primary_bath", "bath", "half_bath"]);
+/** Minimum width a courtyard-topology wing needs — enough for a real room, plus (for the secondary wing, when it has 2+ independent rooms) its own internal corridor. */
+const COURTYARD_MIN_WING_WIDTH = 13;
+/** Minimum real open width/depth for the courtyard void itself — below this it's a leftover gap, not a usable outdoor room. */
+const COURTYARD_MIN_VOID = 8;
+/** Shallow full-width strip at the front of the private zone connecting both wings — doubles as the hallway the public zone's door anchors to. */
+const COURTYARD_CONNECTOR_DEPTH = 4.5;
 
 export interface LayoutVariant {
   /** Stable key, also used as the React list key in the compare UI. */
@@ -150,7 +156,7 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
   }
 
   // ---- Private zone: bedrooms + bathrooms, in one or two rows around a hallway.
-  const privateZone = layoutPrivateZone(privateProgramRooms, width, publicDepth, privateDepth);
+  const privateZone = layoutPrivateZone(privateProgramRooms, width, publicDepth, privateDepth, !!program.garage, input.openPlan);
   for (const p of [...privateProgramRooms, ...privateZone.extraRooms]) {
     rooms.push(toRoom(p, privateZone.rects.get(p.id)!));
   }
@@ -167,6 +173,24 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
       label: "Hallway",
       ...privateZone.hallwayRect,
       areaSqft: round1(privateZone.hallwayRect.w * privateZone.hallwayRect.h),
+    });
+  }
+  if (privateZone.hallwayWingBRect) {
+    rooms.push({
+      id: "hallway_wingB",
+      type: "hallway",
+      label: "Hallway",
+      ...privateZone.hallwayWingBRect,
+      areaSqft: round1(privateZone.hallwayWingBRect.w * privateZone.hallwayWingBRect.h),
+    });
+  }
+  if (privateZone.courtyardRect) {
+    rooms.push({
+      id: "courtyard",
+      type: "courtyard",
+      label: "Courtyard",
+      ...privateZone.courtyardRect,
+      areaSqft: round1(privateZone.courtyardRect.w * privateZone.courtyardRect.h),
     });
   }
   const publicToPrivateAnchor = privateZone.hallwayRect ? "hallway" : privateProgramRooms[0]?.id;
@@ -272,14 +296,25 @@ interface PrivateZoneResult {
   rects: Map<string, Rect>;
   adjacency: Array<{ a: string; b: string }>;
   hallwayRect: Rect | null;
+  /** Real open void between the courtyard topology's two wings — null for every other topology. Caller adds it to the final room list as a type "courtyard" Room, same as hallwayRect becomes a type "hallway" Room. */
+  courtyardRect: Rect | null;
+  /** Courtyard topology's secondary wing sometimes needs its own short internal corridor (see layoutPrivateZoneCourtyard) — null whenever that wing has 0-1 rooms, or for every other topology. Caller adds it as a second type "hallway" Room with a distinct id. */
+  hallwayWingBRect: Rect | null;
   feasible: boolean;
   /** Real new rooms (closets) carved out of a sliver bedroom/bath by splitSliverRooms — caller must add these to the final room list the same as any other ProgramRoom. */
   extraRooms: ProgramRoom[];
 }
 
-function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: number, privateDepth: number): PrivateZoneResult {
+function layoutPrivateZone(
+  items: ProgramRoom[],
+  width: number,
+  publicDepth: number,
+  privateDepth: number,
+  hasGarage: boolean,
+  openPlan: boolean,
+): PrivateZoneResult {
   if (items.length === 0) {
-    return { rects: new Map(), adjacency: [], hallwayRect: null, feasible: true, extraRooms: [] };
+    return { rects: new Map(), adjacency: [], hallwayRect: null, courtyardRect: null, hallwayWingBRect: null, feasible: true, extraRooms: [] };
   }
 
   const primary = items.find((i) => i.type === "primary_bedroom")!;
@@ -289,7 +324,11 @@ function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: num
   const secondaryBedrooms = others.filter((i) => i.type !== "bath");
   const ordered = [primary, ...(ensuite ? [ensuite] : []), ...secondaryBedrooms, ...sharedBaths];
 
-  const topology = pickPrivateTopology(ordered.length, width, privateDepth);
+  const topology = pickPrivateTopology(ordered.length, width, privateDepth, hasGarage, openPlan);
+
+  if (topology === "courtyard") {
+    return layoutPrivateZoneCourtyard(ordered, primary, ensuite, width, publicDepth, privateDepth);
+  }
 
   if (topology === "side-hallway") {
     return layoutPrivateZoneSideHallway(ordered, primary, ensuite, width, publicDepth, privateDepth);
@@ -303,7 +342,7 @@ function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: num
     const hallwayId = hallwayDepth > 0 ? "hallway" : undefined;
     const adjacency = [...buildSequentialAdjacency(ordered, ensuite, primary, hallwayId), ...split.extraAdjacency];
     const hallwayRect = hallwayDepth > 0 ? { x: 0, y: publicDepth, w: width, h: hallwayDepth } : null;
-    return { rects: split.rects, adjacency, hallwayRect, feasible: row.feasible, extraRooms: split.extraRooms };
+    return { rects: split.rects, adjacency, hallwayRect, courtyardRect: null, hallwayWingBRect: null, feasible: row.feasible, extraRooms: split.extraRooms };
   }
 
   // Keep the primary bedroom + ensuite together in the far (quieter) row,
@@ -375,6 +414,8 @@ function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: num
     rects,
     adjacency,
     hallwayRect: { x: 0, y: hallwayY, w: width, h: HALLWAY_WIDTH },
+    courtyardRect: null,
+    hallwayWingBRect: null,
     feasible: rowAlloc.feasible && nearLayout.feasible && farLayout.feasible,
     extraRooms: [...nearSplit.extraRooms, ...farSplit.extraRooms],
   };
@@ -397,9 +438,33 @@ function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: num
  *   horizontal hallway — reserved for larger (5+) private programs, where a
  *   single column would stack too many rooms too shallow, and only when
  *   there's enough depth for a second row.
+ * - "courtyard": a real U-shape — two side wings flanking an open void,
+ *   connected by a shallow front strip (see layoutPrivateZoneCourtyard).
+ *   Selected by the program's actual SHAPE, not just room count (the
+ *   2026-10-27 flagship audit's other unaddressed scoping note): a garage-
+ *   screened private courtyard is a traditional, non-open-plan pattern — the
+ *   garage (its own block, see generateFloorPlan) shields one side of the lot
+ *   from the street/driveway while bedrooms wrap a private outdoor space on
+ *   the rest. An open-plan program's public zone is already optimized for
+ *   direct, linear circulation (great room flowing straight into the rest of
+ *   the house), which doesn't pair naturally with a wing-and-void private
+ *   zone — those programs stay on side-hallway/double-row instead.
  */
-function pickPrivateTopology(count: number, width: number, privateDepth: number): "single" | "side-hallway" | "double-row" {
+function pickPrivateTopology(
+  count: number,
+  width: number,
+  privateDepth: number,
+  hasGarage: boolean,
+  openPlan: boolean,
+): "single" | "side-hallway" | "double-row" | "courtyard" {
   if (count <= 2) return "single";
+
+  const courtyardWidthOk = width - 2 * COURTYARD_MIN_WING_WIDTH >= COURTYARD_MIN_VOID;
+  const courtyardDepthOk = privateDepth - COURTYARD_CONNECTOR_DEPTH >= COURTYARD_MIN_VOID;
+  if (hasGarage && !openPlan && count >= 3 && courtyardWidthOk && courtyardDepthOk) {
+    return "courtyard";
+  }
+
   const sideHallwayWidthOk = width - HALLWAY_WIDTH >= 9;
   if (count <= 4 && sideHallwayWidthOk) return "side-hallway";
   if (privateDepth >= HALLWAY_WIDTH + 16) return "double-row";
@@ -466,8 +531,148 @@ function layoutPrivateZoneSideHallway(
     rects,
     adjacency,
     hallwayRect: { x: 0, y: publicDepth, w: HALLWAY_WIDTH, h: privateDepth },
+    courtyardRect: null,
+    hallwayWingBRect: null,
     feasible: column.feasible,
     extraRooms: split.extraRooms,
+  };
+}
+
+/**
+ * Courtyard / U-shape private zone — genuinely different geometry from every
+ * other topology above: two side wings flanking a real open void instead of
+ * rooms arranged along one hallway. Shape:
+ *
+ *   [public zone]
+ *   [--- connector (hallway) spans full width ---]
+ *   [wing A  ][        courtyard (void)        ][  wing B  ]
+ *   [primary ][                                ][ bedroom 2]
+ *   [ ensuite][                                ][ hallway_B][bedroom 3]
+ *   [        ][                                ][  (if 2+ items in wing B)]
+ *
+ * Wing A holds the primary suite (the quiet wing, away from the garage the
+ * caller attaches to the house's right side in generateFloorPlan) and is
+ * never more than 2 items (primary + its ensuite), so it chains directly:
+ * primary sits frontmost (real connector access), the ensuite sits behind it
+ * (reached only via the primary bedroom, the real and only sane ensuite
+ * pattern — never the reverse). Wing B holds everything else. When wing B
+ * has 2+ *independent* rooms, stacking them in a bare column would only give
+ * the frontmost one real connector access — every other room in that column
+ * wouldn't touch any hallway at all and would come out sealed, the exact
+ * "never fake a door, never silently ship a sealed room" failure this
+ * codebase already fixed once for the garage. So wing B gets its own short
+ * internal corridor (`hallway_wingB`) along its courtyard-facing inner edge
+ * when it needs one — rooms sit on the true-exterior outer edge (real
+ * windows to the outside), the corridor runs the wing's full depth so every
+ * room touches it directly, and it connects back to the main connector at
+ * the front, same as the side-hallway topology's corridor does for the
+ * whole private zone.
+ *
+ * The void itself becomes a real `courtyardRect`, pushed into the room list
+ * by the caller as a type "courtyard" Room — buildWallsAndDoors below treats
+ * every wall bordering it as exterior, so wing rooms that face the courtyard
+ * get real windows onto it, the same as a room facing the street.
+ */
+function layoutPrivateZoneCourtyard(
+  ordered: ProgramRoom[],
+  primary: ProgramRoom,
+  ensuite: ProgramRoom | undefined,
+  width: number,
+  publicDepth: number,
+  privateDepth: number,
+): PrivateZoneResult {
+  const wingA: ProgramRoom[] = [primary, ...(ensuite ? [ensuite] : [])];
+  const wingB: ProgramRoom[] = ordered.filter((i) => i !== primary && i !== ensuite);
+
+  const wingAIdeal = wingA.reduce((s, i) => s + i.idealArea, 0);
+  const wingBIdeal = wingB.reduce((s, i) => s + i.idealArea, 0);
+  // Reserve a real courtyard width BEFORE splitting the wings. allocateLengths always
+  // fills its *entire* total across the items handed to it — folding the void in as a
+  // plain third item would make its size compete against the wings' ideal room areas
+  // for no good reason (an early version of this function did exactly that and the
+  // courtyard collapsed to 0 every time, confirmed via `npm run verify` on a real
+  // 4-bed/garage brief before this fix). A courtyard's size should scale with leftover
+  // footprint width instead, bounded to a sane real range.
+  const targetCourtyardWidth = roundTo(Math.min(Math.max(width * 0.25, COURTYARD_MIN_VOID), 22), 0.5);
+  const wingsTotalWidth = width - targetCourtyardWidth;
+  const widthAlloc = allocateLengths(wingsTotalWidth, [
+    { id: "wingA", ideal: wingAIdeal || 1, min: COURTYARD_MIN_WING_WIDTH },
+    { id: "wingB", ideal: wingBIdeal || 1, min: COURTYARD_MIN_WING_WIDTH },
+  ]);
+  const wingAWidth = roundTo(widthAlloc.lengths.get("wingA") ?? wingsTotalWidth / 2, 0.5);
+  const wingBWidth = roundTo(wingsTotalWidth - wingAWidth, 0.5);
+
+  const connectorDepth = Math.min(COURTYARD_CONNECTOR_DEPTH, privateDepth * 0.3);
+  const wingDepth = privateDepth - connectorDepth;
+  const wingY = publicDepth + connectorDepth;
+
+  // Wing A: primary frontmost (real connector access), ensuite behind it —
+  // NOT reversed like the side-hallway topology's column, because that
+  // topology's hallway runs the column's full depth (every position touches
+  // it), while this connector is only a short strip at the front: whichever
+  // item is frontmost is the only one that actually gets a real hallway
+  // door, so it has to be the bedroom, never the bathroom.
+  const wingAItems: AllocItem[] = wingA.map((p) => ({
+    id: p.id,
+    ideal: wingDepth > 0 ? p.idealArea / wingDepth : p.idealArea,
+    min: p.minWidth,
+  }));
+  const wingALayout = layoutColumn(wingAItems, 0, wingY, wingDepth, wingAWidth);
+  const wingASplit = splitSliverRooms(wingA, transposeRects(wingALayout.rects), wingAWidth, "front");
+  const wingARects = transposeRects(wingASplit.rects);
+
+  const adjacency: Array<{ a: string; b: string }> = [];
+  adjacency.push({ a: primary.id, b: "hallway" });
+  if (ensuite) adjacency.push({ a: primary.id, b: ensuite.id });
+  adjacency.push(...wingASplit.extraAdjacency);
+
+  let wingBRects = new Map<string, Rect>();
+  let wingBFeasible = true;
+  let wingBExtraRooms: ProgramRoom[] = [];
+  let hallwayWingBRect: Rect | null = null;
+
+  if (wingB.length === 1) {
+    // Same reasoning as wing A with one item: frontmost = the whole wing, real connector access, no internal corridor needed.
+    const only = wingB[0];
+    const rect: Rect = { x: width - wingBWidth, y: wingY, w: wingBWidth, h: wingDepth };
+    wingBRects.set(only.id, rect);
+    adjacency.push({ a: only.id, b: "hallway" });
+  } else if (wingB.length >= 2) {
+    // 2+ independent rooms need their own corridor — placed on the inner
+    // (courtyard-facing) edge so rooms occupy the true-exterior outer edge.
+    const roomsWidth = wingBWidth - HALLWAY_WIDTH;
+    const roomsX = width - wingBWidth + HALLWAY_WIDTH;
+    const wingBItems: AllocItem[] = wingB.map((p) => ({
+      id: p.id,
+      ideal: wingDepth > 0 ? p.idealArea / wingDepth : p.idealArea,
+      min: p.minWidth,
+    }));
+    const wingBLayout = layoutColumn(wingBItems, roomsX, wingY, wingDepth, roomsWidth);
+    const wingBSplit = splitSliverRooms(wingB, transposeRects(wingBLayout.rects), roomsWidth, "front");
+    wingBRects = transposeRects(wingBSplit.rects);
+    wingBFeasible = wingBLayout.feasible;
+    wingBExtraRooms = wingBSplit.extraRooms;
+    hallwayWingBRect = { x: width - wingBWidth, y: wingY, w: HALLWAY_WIDTH, h: wingDepth };
+
+    adjacency.push({ a: "hallway_wingB", b: "hallway" });
+    for (const item of wingB) adjacency.push({ a: item.id, b: "hallway_wingB" });
+    adjacency.push(...wingBSplit.extraAdjacency);
+  }
+
+  const rects = new Map<string, Rect>([...wingARects, ...wingBRects]);
+
+  const courtyardWidth = roundTo(width - wingAWidth - wingBWidth, 0.5);
+  const courtyardRect: Rect | null =
+    courtyardWidth > 0.5 && wingDepth > 0.5 ? { x: wingAWidth, y: wingY, w: courtyardWidth, h: wingDepth } : null;
+
+  return {
+    rects,
+    adjacency,
+    hallwayRect: { x: 0, y: publicDepth, w: width, h: connectorDepth },
+    courtyardRect,
+    hallwayWingBRect,
+    feasible: widthAlloc.feasible && wingALayout.feasible && wingBFeasible,
+    extraRooms: [...wingASplit.extraRooms, ...wingBExtraRooms],
   };
 }
 
@@ -612,12 +817,20 @@ function buildWallsAndDoors(
 
   for (let i = 0; i < interiorRooms.length; i++) {
     for (let j = i + 1; j < interiorRooms.length; j++) {
-      const overlap = sharedEdgeOverlap(interiorRooms[i], interiorRooms[j]);
+      const roomA = interiorRooms[i];
+      const roomB = interiorRooms[j];
+      const overlap = sharedEdgeOverlap(roomA, roomB);
       if (overlap && overlap.length >= 1) {
+        // A courtyard is a real open void, not an interior room — a wall facing it
+        // looks out onto the outdoors exactly like a wall facing the street, so it
+        // gets the same real-window treatment (computeWindows only ever considers
+        // `exterior` walls). This is the one piece of the courtyard topology that
+        // can't be built by reusing the row/column layout primitives alone.
+        const facesCourtyard = roomA.type === "courtyard" || roomB.type === "courtyard";
         if (overlap.orientation === "v") {
-          addWall(overlap.x, overlap.y - overlap.length / 2, overlap.x, overlap.y + overlap.length / 2, false);
+          addWall(overlap.x, overlap.y - overlap.length / 2, overlap.x, overlap.y + overlap.length / 2, facesCourtyard);
         } else {
-          addWall(overlap.x - overlap.length / 2, overlap.y, overlap.x + overlap.length / 2, overlap.y, false);
+          addWall(overlap.x - overlap.length / 2, overlap.y, overlap.x + overlap.length / 2, overlap.y, facesCourtyard);
         }
       }
     }
@@ -688,7 +901,7 @@ function checkGarageAccess(rooms: Room[], doors: Door[], warnings: string[]) {
 
 function checkMinimums(rooms: Room[], warnings: string[]) {
   for (const room of rooms) {
-    if (room.type === "hallway") continue;
+    if (room.type === "hallway" || room.type === "courtyard") continue;
     const min = getMinArea(room.type);
     if (min > 0 && room.areaSqft < min * 0.9) {
       warnings.push(

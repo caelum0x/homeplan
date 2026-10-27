@@ -28,6 +28,7 @@ const ROOM_FILL_RGB: Partial<Record<Room["type"], [number, number, number]>> = {
   office: [0.93, 0.9, 0.95],
   garage: [0.87, 0.87, 0.86],
   closet: [0.93, 0.93, 0.93],
+  courtyard: [0.84, 0.9, 0.81],
 };
 
 /** Builds a real multi-element vector PDF (not a screenshot) for one floor plan. Returns the raw PDF bytes. */

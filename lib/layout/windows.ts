@@ -19,7 +19,7 @@ const TWO_WINDOW_THRESHOLD = 14;
 const EPS = 0.05;
 
 /** Rooms where a window doesn't make sense (no exterior use, or usually windowless by convention). */
-const WINDOW_EXCLUDED_TYPES = new Set<RoomType>(["hallway", "closet", "garage"]);
+const WINDOW_EXCLUDED_TYPES = new Set<RoomType>(["hallway", "closet", "garage", "courtyard"]);
 
 interface Edge {
   x1: number;
