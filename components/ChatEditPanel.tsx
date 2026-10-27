@@ -16,7 +16,14 @@ interface LogEntry {
   ok: boolean;
 }
 
-const SUGGESTIONS = ["make the primary bedroom bigger", "shrink bedroom 2 by 15%", "move the bathroom left", "rename the office to Studio"];
+const SUGGESTIONS = [
+  "make the primary bedroom bigger",
+  "shrink bedroom 2 by 15%",
+  "move the bathroom left",
+  "rename the office to Studio",
+  "add a sofa to the living room",
+  "rotate the bed in bedroom 1",
+];
 
 /**
  * Natural-language editing on top of the already-generated plan — Maket's
