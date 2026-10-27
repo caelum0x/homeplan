@@ -10,7 +10,7 @@ import { upsertProSubscriber } from "@/lib/entitlements";
 type SubscriptionData = {
   subscription_id: string;
   status: string;
-  customer?: { email?: string | null };
+  customer?: { email?: string | null; customer_id?: string | null };
 };
 
 function parseSubscriptionData(data: unknown): SubscriptionData | null {
@@ -22,11 +22,14 @@ function parseSubscriptionData(data: unknown): SubscriptionData | null {
   if (typeof status !== "string" || status.length === 0 || status.length > 40) return null;
   const customer = record.customer;
   let email: string | null = null;
+  let customerId: string | null = null;
   if (customer && typeof customer === "object") {
     const rawEmail = (customer as Record<string, unknown>).email;
     if (typeof rawEmail === "string" && rawEmail.length > 0 && rawEmail.length <= 320) email = rawEmail;
+    const rawCustomerId = (customer as Record<string, unknown>).customer_id;
+    if (typeof rawCustomerId === "string" && /^[A-Za-z0-9_-]{4,160}$/.test(rawCustomerId)) customerId = rawCustomerId;
   }
-  return { subscription_id: subscriptionId, status, customer: { email } };
+  return { subscription_id: subscriptionId, status, customer: { email, customer_id: customerId } };
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -61,11 +64,17 @@ export async function POST(request: Request): Promise<Response> {
   if (typeof type === "string" && type.startsWith("subscription.")) {
     const subscription = parseSubscriptionData(data);
     if (subscription?.customer?.email) {
-      await upsertProSubscriber(subscription.customer.email, subscription.subscription_id, subscription.status);
+      await upsertProSubscriber(
+        subscription.customer.email,
+        subscription.subscription_id,
+        subscription.status,
+        subscription.customer.customer_id ?? null,
+      );
       console.log("HomePlan Pro entitlement updated:", {
         type,
         email: subscription.customer.email,
         status: subscription.status,
+        hasCustomerId: Boolean(subscription.customer.customer_id),
         eventId: id,
       });
     } else {

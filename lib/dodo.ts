@@ -89,6 +89,24 @@ export async function createProCheckout(env: DodoEnv, input: CheckoutInput): Pro
   return { sessionId: body.session_id, checkoutUrl };
 }
 
+/**
+ * Real hosted Dodo Customer Portal session — lets a Pro subscriber view invoices,
+ * update payment methods, and cancel their own subscription without us building
+ * any of that UI. POST /customers/{customer_id}/customer-portal/session, per Dodo's
+ * own docs (customer-management skill); this is the one and only supported way to
+ * self-serve cancel. Caller must have already verified the requester owns this
+ * customer_id (via the signed Pro-session cookie) before calling this.
+ */
+export async function createCustomerPortalSession(env: DodoEnv, customerId: string, returnUrl: string): Promise<string> {
+  const query = new URLSearchParams({ return_url: returnUrl });
+  const body = await dodoRequest(env, `/customers/${encodeURIComponent(customerId)}/customer-portal/session?${query}`, {
+    method: "POST",
+  });
+  const link = trustedDodoUrl(body.link);
+  if (!link) throw new Error("Dodo returned an invalid customer portal link");
+  return link;
+}
+
 export type WebhookHeaders = { readonly id: string; readonly timestamp: string; readonly signature: string };
 
 /** Standard Webhooks HMAC-SHA256 verification with a five-minute replay window. */
