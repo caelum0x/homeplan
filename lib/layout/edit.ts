@@ -23,6 +23,7 @@ import type { Door, FloorPlan, FurnitureItem, FurnitureType, Room, RoomType, Wal
 import { sharedEdgeOverlap } from "./geometry";
 import { makeFurniture } from "./furniture";
 import { computeWindows } from "./windows";
+import { computeDoorSwings } from "./doorSwings";
 
 const DOOR_WIDTH = 3;
 const MIN_DOOR_CLEARANCE = 2.2; // feet — minimum shared-edge length before we bother drawing a door opening
@@ -147,20 +148,24 @@ function recompute(rooms: Room[], source: FloorPlan): FloorPlan {
   const footprintH = rooms.length ? Math.max(...rooms.map((r) => r.y + r.h)) : 0;
 
   const { walls, doors } = buildWallsAndDoorsFromGeometry(rooms, footprintW, footprintH);
-  const warnings = checkOverlaps(rooms);
+  const overlapWarnings = checkOverlaps(rooms);
+  // Re-scored from the fresh geometry + furniture every time, same as windows below — a
+  // dragged room, a moved sofa, or a newly-added door never leaves a stale hinge/swing choice
+  // from before the edit.
+  const { doors: doorsWithSwing, warnings: swingWarnings } = computeDoorSwings(rooms, doors, source.furniture);
 
   return {
     footprint: { w: round1(footprintW), h: round1(footprintH) },
     totalAreaSqft: round1(rooms.reduce((s, r) => s + r.areaSqft, 0)),
     rooms,
     walls,
-    doors,
-    warnings,
+    doors: doorsWithSwing,
+    warnings: [...overlapWarnings, ...swingWarnings],
     furniture: source.furniture,
     // Re-derived from the fresh geometry every time, same as walls/doors — a
     // dragged/resized room's windows never go stale on an exterior wall that
     // no longer exists (or gains one that now does).
-    windows: computeWindows(rooms, walls, doors),
+    windows: computeWindows(rooms, walls, doorsWithSwing),
     wallColor: source.wallColor,
   };
 }

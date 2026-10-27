@@ -6,6 +6,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
 import type { Door, FloorPlan, FurnitureItem, Room, Wall, Window as PlanWindow } from "@/lib/layout/types";
 import { FURNITURE_CATALOG, type FurnitureSpec } from "@/lib/layout/furniture";
+import { resolveDoorSwingGeometry } from "@/lib/layout/doorSwings";
 import { ROOM_FILL } from "@/lib/renderSvg";
 
 /** Per-category overall height, used by buildFurnitureObject's composite shapes below — real geometric volume per piece, not a photoreal asset. */
@@ -530,6 +531,31 @@ export function FloorPlan3D({
       const mullion = new THREE.Mesh(mullionGeo, new THREE.MeshStandardMaterial({ color: 0xffffff }));
       mullion.position.set(win.x, WINDOW_SILL_HEIGHT + WINDOW_PANE_HEIGHT / 2, win.y);
       scene.add(mullion);
+    }
+
+    // Door leaves: a real panel from the hinge to its open tip, at the same hinge/swing-into
+    // choice `computeDoorSwings` already scored against this plan's own furniture (lib/layout/
+    // doorSwings.ts) — the same geometry the 2D/Studio swing-arc marks draw, not a separate guess.
+    // Shown open (not closed flush with the wall) so the real cut opening behind it stays visible
+    // and readable in a massing view, matching how the 2D swing-arc mark already reads as "open."
+    const doorWallHeight = WALL_HEIGHT * wallHeightFactor;
+    for (const door of plan.doors) {
+      const geometry = resolveDoorSwingGeometry(door, plan.rooms);
+      if (!geometry) continue;
+      const { hinge, openTip } = geometry;
+      const leafThickness = WALL_THICKNESS * 0.35;
+      const leafHeight = Math.min(DOOR_HEIGHT, doorWallHeight - 0.2);
+      const leafGeo = new THREE.BoxGeometry(door.width, leafHeight, leafThickness);
+      const leafMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55 });
+      const leaf = new THREE.Mesh(leafGeo, leafMat);
+      const midX = (hinge.x + openTip.x) / 2;
+      const midZ = (hinge.y + openTip.y) / 2;
+      const angle = Math.atan2(openTip.y - hinge.y, openTip.x - hinge.x);
+      leaf.position.set(midX, leafHeight / 2, midZ);
+      leaf.rotation.y = -angle;
+      leaf.castShadow = true;
+      leaf.receiveShadow = true;
+      scene.add(leaf);
     }
 
     // Furniture: a real composite silhouette per category (bed+headboard, sofa+back+arms,

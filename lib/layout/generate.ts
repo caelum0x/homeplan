@@ -3,6 +3,7 @@ import { buildRoomProgram, getMinArea, type ProgramRoom } from "./program";
 import { allocateLengths, layoutColumn, layoutRow, sharedEdgeOverlap, type AllocItem, type Rect } from "./geometry";
 import { autoPlaceFurniture } from "./furniture";
 import { computeWindows } from "./windows";
+import { computeDoorSwings } from "./doorSwings";
 
 const HALLWAY_WIDTH = 3.5;
 const DOOR_WIDTH = 3;
@@ -255,16 +256,19 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
 
   const totalAreaSqft = round1(rooms.reduce((s, r) => s + r.areaSqft, 0));
   const roundedRooms = rooms.map(roundRoom);
+  const furniture = autoPlaceFurniture(roundedRooms);
+  const { doors: doorsWithSwing, warnings: swingWarnings } = computeDoorSwings(roundedRooms, doors, furniture);
+  warnings.push(...swingWarnings);
 
   return {
     footprint: { w: round1(totalWidth), h: round1(depth) },
     totalAreaSqft,
     rooms: roundedRooms,
     walls,
-    doors,
+    doors: doorsWithSwing,
     warnings,
-    furniture: autoPlaceFurniture(roundedRooms),
-    windows: computeWindows(roundedRooms, walls, doors),
+    furniture,
+    windows: computeWindows(roundedRooms, walls, doorsWithSwing),
   };
 }
 

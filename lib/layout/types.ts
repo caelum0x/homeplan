@@ -90,6 +90,13 @@ export interface Door {
   width: number;
   /** Room ids on each side of the opening, for reasoning/debugging. */
   connects: [string, string];
+  /** Which end of the opening the leaf hinges on — computed by `computeDoorSwings`
+   * (lib/layout/doorSwings.ts) by scoring real clearance against placed furniture.
+   * Optional so a plan saved/shared before this existed (old share links, localStorage
+   * templates) still parses instead of crashing a renderer that expects it. */
+  hingeSide?: "start" | "end";
+  /** Room id the leaf swings into (never "exterior"). See `hingeSide`. */
+  swingInto?: string;
 }
 
 export interface Window {

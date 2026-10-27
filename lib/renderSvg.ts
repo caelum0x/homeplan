@@ -1,6 +1,7 @@
-import type { FloorPlan, FurnitureItem, Room, RoomType } from "./layout/types";
+import type { Door, FloorPlan, FurnitureItem, Room, RoomType } from "./layout/types";
 import { FURNITURE_CATALOG } from "./layout/furniture";
 import { furnitureIconDetails } from "./furnitureIcon";
+import { resolveDoorSwingGeometry } from "./layout/doorSwings";
 
 export const ROOM_FILL: Partial<Record<RoomType, string>> = {
   entry: "#e8e3d8",
@@ -44,16 +45,7 @@ export function floorPlanToSvgString(plan: FloorPlan): string {
         }" stroke-linecap="square" />`,
     )
     .join("\n");
-  const doors = plan.doors
-    .map((d) => {
-      const cx = toPx(d.x);
-      const cy = toPx(d.y);
-      const half = toPx(d.width) / 2;
-      return d.orientation === "h"
-        ? `<line x1="${cx - half}" y1="${cy}" x2="${cx + half}" y2="${cy}" stroke="#ffffff" stroke-width="4" />`
-        : `<line x1="${cx}" y1="${cy - half}" x2="${cx}" y2="${cy + half}" stroke="#ffffff" stroke-width="4" />`;
-    })
-    .join("\n");
+  const doors = plan.doors.map((d) => doorToSvg(d, plan.rooms, toPx)).join("\n");
   // `windows` is optional on FloorPlan (a plan saved/shared before this field existed
   // — localStorage templates, old share links — won't have it), so always fall back
   // to an empty list rather than crash a renderer handed stale data.
@@ -71,6 +63,48 @@ export function floorPlanToSvgString(plan: FloorPlan): string {
     furniture,
     `</g>`,
     `</svg>`,
+  ].join("\n");
+}
+
+/**
+ * A door reads as the opening gap plus a real architectural swing symbol — a dashed quarter-circle
+ * arc and a solid leaf line from the hinge to the open tip — computed from `computeDoorSwings`'s
+ * own hinge/swing-into choice (lib/layout/doorSwings.ts), never redrawn from a separate guess. The
+ * arc is sampled as a polyline rather than an SVG elliptical-arc command specifically to sidestep
+ * getting the large-arc/sweep flags backwards for an unpredictable mix of hinge sides and swing
+ * directions — a plain parametric sweep from 0° to 90° is correct by construction for all of them.
+ * Falls back to the plain gap line for a door saved before `hingeSide`/`swingInto` existed.
+ */
+function doorToSvg(d: Door, rooms: Room[], toPx: (ft: number) => number): string {
+  const cx = toPx(d.x);
+  const cy = toPx(d.y);
+  const half = toPx(d.width) / 2;
+  const gapLine =
+    d.orientation === "h"
+      ? `<line x1="${cx - half}" y1="${cy}" x2="${cx + half}" y2="${cy}" stroke="#ffffff" stroke-width="4" />`
+      : `<line x1="${cx}" y1="${cy - half}" x2="${cx}" y2="${cy + half}" stroke="#ffffff" stroke-width="4" />`;
+
+  const geometry = resolveDoorSwingGeometry(d, rooms);
+  if (!geometry) return gapLine;
+
+  const { hinge, openTip, closedTip } = geometry;
+  const along = { x: (closedTip.x - hinge.x) / d.width, y: (closedTip.y - hinge.y) / d.width };
+  const normal = { x: (openTip.x - hinge.x) / d.width, y: (openTip.y - hinge.y) / d.width };
+  const steps = 12;
+  const arcPoints: string[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const angle = (Math.PI / 2) * (i / steps);
+    const px = toPx(hinge.x + d.width * (along.x * Math.cos(angle) + normal.x * Math.sin(angle)));
+    const py = toPx(hinge.y + d.width * (along.y * Math.cos(angle) + normal.y * Math.sin(angle)));
+    arcPoints.push(`${px.toFixed(1)},${py.toFixed(1)}`);
+  }
+  const hingePx = { x: toPx(hinge.x), y: toPx(hinge.y) };
+  const openPx = { x: toPx(openTip.x), y: toPx(openTip.y) };
+
+  return [
+    gapLine,
+    `<polyline points="${arcPoints.join(" ")}" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />`,
+    `<line x1="${hingePx.x}" y1="${hingePx.y}" x2="${openPx.x}" y2="${openPx.y}" stroke="#8a8578" stroke-width="1.5" />`,
   ].join("\n");
 }
 

@@ -4,9 +4,10 @@
 // coordinates, so dimensions stay crisp and selectable at any zoom level.
 
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
-import type { FloorPlan, FurnitureItem, Room } from "./layout/types";
+import type { Door, FloorPlan, FurnitureItem, Room } from "./layout/types";
 import { FURNITURE_CATALOG } from "./layout/furniture";
 import { furnitureFootprintCorners, furnitureIconMarks } from "./furnitureTransform";
+import { resolveDoorSwingGeometry } from "./layout/doorSwings";
 
 const MARGIN = 36; // points
 const PAGE_W = 792; // US Letter, landscape
@@ -110,6 +111,7 @@ export async function floorPlanToPdf(plan: FloorPlan): Promise<Uint8Array> {
     } else {
       page.drawLine({ start: { x: cx, y: cy - half }, end: { x: cx, y: cy + half }, thickness: 2.2, color: rgb(1, 1, 1) });
     }
+    drawDoorSwing(page, door, plan.rooms, px, py);
   }
 
   // Windows: same pale-blue-bar-plus-white-mullion mark as the SVG/Studio renderers
@@ -137,6 +139,39 @@ export async function floorPlanToPdf(plan: FloorPlan): Promise<Uint8Array> {
   }
 
   return doc.save();
+}
+
+/**
+ * Real swing arc + leaf line, same hinge/swing-into choice `computeDoorSwings` scored against
+ * this plan's own furniture (lib/layout/doorSwings.ts) — a standard architectural drawing
+ * convention, matching what the SVG/Studio renderers already draw. Sampled as short line
+ * segments in plan space (then mapped through `px`/`py`, same as every other point on this page)
+ * rather than a PDF arc/bezier primitive, so the page-space y-flip never has to be reasoned about
+ * separately from everywhere else on this page.
+ */
+function drawDoorSwing(page: PDFPage, door: Door, rooms: Room[], px: (ft: number) => number, py: (ft: number) => number) {
+  const geometry = resolveDoorSwingGeometry(door, rooms);
+  if (!geometry) return;
+  const { hinge, openTip, closedTip } = geometry;
+  const along = { x: (closedTip.x - hinge.x) / door.width, y: (closedTip.y - hinge.y) / door.width };
+  const normal = { x: (openTip.x - hinge.x) / door.width, y: (openTip.y - hinge.y) / door.width };
+  const steps = 16;
+  const arcColor = rgb(0.72, 0.7, 0.64);
+  let prev = { x: px(closedTip.x), y: py(closedTip.y) };
+  for (let i = 1; i <= steps; i++) {
+    const angle = (Math.PI / 2) * (i / steps);
+    const planX = hinge.x + door.width * (along.x * Math.cos(angle) + normal.x * Math.sin(angle));
+    const planY = hinge.y + door.width * (along.y * Math.cos(angle) + normal.y * Math.sin(angle));
+    const point = { x: px(planX), y: py(planY) };
+    page.drawLine({ start: prev, end: point, thickness: 0.6, color: arcColor, dashArray: [2, 2] });
+    prev = point;
+  }
+  page.drawLine({
+    start: { x: px(hinge.x), y: py(hinge.y) },
+    end: { x: px(openTip.x), y: py(openTip.y) },
+    thickness: 1,
+    color: rgb(0.54, 0.52, 0.47),
+  });
 }
 
 function drawCenteredText(page: PDFPage, text: string, cx: number, y: number, font: PDFFont, size: number) {

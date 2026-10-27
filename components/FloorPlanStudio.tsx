@@ -18,6 +18,7 @@ import {
 import { FURNITURE_CATALOG } from "@/lib/layout/furniture";
 import { ROOM_FILL, SVG_PADDING as PADDING, SVG_SCALE as SCALE } from "@/lib/renderSvg";
 import { FurniturePiece } from "./FurniturePiece";
+import { DoorMark } from "./FloorPlanSvg";
 
 const ROOM_TYPE_OPTIONS: { value: RoomType; label: string }[] = [
   { value: "bedroom", label: "Bedroom" },
@@ -377,16 +378,11 @@ export function FloorPlanStudio({ plan, onChange, traceImageUrl }: FloorPlanStud
               );
             })}
 
-            {plan.doors.map((door) => {
-              const cx = toPx(door.x);
-              const cy = toPx(door.y);
-              const half = toPx(door.width) / 2;
-              return door.orientation === "h" ? (
-                <line key={door.id} x1={cx - half} y1={cy} x2={cx + half} y2={cy} stroke="#ffffff" strokeWidth={4} style={{ pointerEvents: "none" }} />
-              ) : (
-                <line key={door.id} x1={cx} y1={cy - half} x2={cx} y2={cy + half} stroke="#ffffff" strokeWidth={4} style={{ pointerEvents: "none" }} />
-              );
-            })}
+            <g style={{ pointerEvents: "none" }}>
+              {plan.doors.map((door) => (
+                <DoorMark key={door.id} door={door} rooms={plan.rooms} toPx={toPx} />
+              ))}
+            </g>
 
             {plan.furniture.map((item) => (
               <FurniturePiece

@@ -1,5 +1,6 @@
-import type { FloorPlan, Room } from "@/lib/layout/types";
+import type { Door, FloorPlan, Room } from "@/lib/layout/types";
 import { ROOM_FILL, SVG_PADDING as PADDING, SVG_SCALE as SCALE } from "@/lib/renderSvg";
+import { resolveDoorSwingGeometry } from "@/lib/layout/doorSwings";
 import { FurniturePiece } from "./FurniturePiece";
 
 interface FloorPlanSvgProps {
@@ -44,7 +45,7 @@ export function FloorPlanSvg({ plan }: FloorPlanSvgProps) {
         ))}
 
         {plan.doors.map((door) => (
-          <DoorMark key={door.id} door={door} toPx={toPx} />
+          <DoorMark key={door.id} door={door} rooms={plan.rooms} toPx={toPx} />
         ))}
 
         {plan.furniture.map((item) => (
@@ -83,15 +84,45 @@ function RoomRect({ room, toPx }: { room: Room; toPx: (ft: number) => number }) 
   );
 }
 
-function DoorMark({ door, toPx }: { door: { x: number; y: number; width: number; orientation: "h" | "v" }; toPx: (ft: number) => number }) {
+/** Real architectural swing symbol (dashed quarter-circle arc + solid leaf line) from the hinge/
+ * swing-into choice `computeDoorSwings` already made — same geometry `lib/renderSvg.ts`'s
+ * `doorToSvg` draws server-side, via the shared `resolveDoorSwingGeometry` helper, not a separate
+ * guess. Falls back to the plain gap for a door saved before `hingeSide`/`swingInto` existed. */
+/** Exported for reuse by FloorPlanStudio.tsx, which draws the same door marks on its editable
+ * canvas — kept as a single shared implementation rather than a third copy of this geometry. */
+export function DoorMark({ door, rooms, toPx }: { door: Door; rooms: Room[]; toPx: (ft: number) => number }) {
   const cx = toPx(door.x);
   const cy = toPx(door.y);
   const half = toPx(door.width) / 2;
+  const gap =
+    door.orientation === "h" ? (
+      <line x1={cx - half} y1={cy} x2={cx + half} y2={cy} stroke="#ffffff" strokeWidth={4} />
+    ) : (
+      <line x1={cx} y1={cy - half} x2={cx} y2={cy + half} stroke="#ffffff" strokeWidth={4} />
+    );
 
-  if (door.orientation === "h") {
-    return <line x1={cx - half} y1={cy} x2={cx + half} y2={cy} stroke="#ffffff" strokeWidth={4} />;
+  const geometry = resolveDoorSwingGeometry(door, rooms);
+  if (!geometry) return gap;
+
+  const { hinge, openTip, closedTip } = geometry;
+  const along = { x: (closedTip.x - hinge.x) / door.width, y: (closedTip.y - hinge.y) / door.width };
+  const normal = { x: (openTip.x - hinge.x) / door.width, y: (openTip.y - hinge.y) / door.width };
+  const steps = 12;
+  const points: string[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const angle = (Math.PI / 2) * (i / steps);
+    const px = toPx(hinge.x + door.width * (along.x * Math.cos(angle) + normal.x * Math.sin(angle)));
+    const py = toPx(hinge.y + door.width * (along.y * Math.cos(angle) + normal.y * Math.sin(angle)));
+    points.push(`${px.toFixed(1)},${py.toFixed(1)}`);
   }
-  return <line x1={cx} y1={cy - half} x2={cx} y2={cy + half} stroke="#ffffff" strokeWidth={4} />;
+
+  return (
+    <>
+      {gap}
+      <polyline points={points.join(" ")} fill="none" stroke="#b7b2a3" strokeWidth={1} strokeDasharray="2 2" />
+      <line x1={toPx(hinge.x)} y1={toPx(hinge.y)} x2={toPx(openTip.x)} y2={toPx(openTip.y)} stroke="#8a8578" strokeWidth={1.5} />
+    </>
+  );
 }
 
 /** A window reads as a pale blue bar with a thin white mullion line, set into the exterior wall — visually distinct from a door's plain white gap. */

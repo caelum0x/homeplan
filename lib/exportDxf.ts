@@ -6,6 +6,7 @@
 import { DxfWriter, point2d, point3d, Units } from "@tarikjabiri/dxf";
 import type { FloorPlan, FurnitureItem } from "./layout/types";
 import { furnitureFootprintCorners, furnitureIconMarks, type PlanPoint } from "./furnitureTransform";
+import { resolveDoorSwingGeometry } from "./layout/doorSwings";
 
 /**
  * Builds a DXF document string for one floor plan. Coordinates are in feet;
@@ -54,6 +55,27 @@ export function floorPlanToDxf(plan: FloorPlan): string {
       dxf.addLine(point3d(door.x - half, flip(door.y), 0), point3d(door.x + half, flip(door.y), 0));
     } else {
       dxf.addLine(point3d(door.x, flip(door.y - half), 0), point3d(door.x, flip(door.y + half), 0));
+    }
+
+    // Real swing arc + leaf line, same hinge/swing-into choice `computeDoorSwings` scored against
+    // this plan's own furniture (lib/layout/doorSwings.ts) — a standard architectural CAD
+    // convention, and the one piece of real door intelligence a CAD-literate customer actually
+    // expects in an exported DXF. DXF's Y axis is already flipped to up (see `flip` above) and its
+    // ARC entity sweeps counterclockwise by convention, so angles are computed directly from the
+    // flipped points rather than the polyline-sampling workaround the SVG renderer needs to dodge
+    // SVG's own sweep-flag ambiguity.
+    const geometry = resolveDoorSwingGeometry(door, plan.rooms);
+    if (geometry) {
+      const { hinge, openTip, closedTip } = geometry;
+      const hingeF = { x: hinge.x, y: flip(hinge.y) };
+      const closedF = { x: closedTip.x, y: flip(closedTip.y) };
+      const openF = { x: openTip.x, y: flip(openTip.y) };
+      const angleClosed = (Math.atan2(closedF.y - hingeF.y, closedF.x - hingeF.x) * 180) / Math.PI;
+      const angleOpen = (Math.atan2(openF.y - hingeF.y, openF.x - hingeF.x) * 180) / Math.PI;
+      const ccwFromClosedToOpen = ((angleOpen - angleClosed + 360) % 360);
+      const [startAngle, endAngle] = ccwFromClosedToOpen < 180 ? [angleClosed, angleOpen] : [angleOpen, angleClosed];
+      dxf.addArc(point3d(hingeF.x, hingeF.y, 0), door.width, startAngle, endAngle);
+      dxf.addLine(point3d(hingeF.x, hingeF.y, 0), point3d(openF.x, openF.y, 0));
     }
   }
 
