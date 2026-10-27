@@ -292,6 +292,35 @@ function toAllocItem(depth: number) {
   });
 }
 
+/**
+ * Minimum depth a near/far private-zone row needs so its widest item doesn't
+ * come out a sliver once `layoutRow`/`allocateLengths` hands that row's width
+ * out proportional to raw `idealArea` (see `toAllocItem` — depth cancels out
+ * of the ratio *between* a row's items, so width share is driven purely by
+ * each item's share of the row's total ideal area, independent of depth).
+ *
+ * Without this, `rowAlloc`'s depth split (below) is decoupled from the width
+ * a row is about to receive: a row dominated by one big item (e.g. primary
+ * bedroom + ensuite, where primary is ~180/250 of the row's ideal area) gets
+ * ~72% of the footprint width no matter how deep the row is, and depth grows
+ * at the same rate as width as footprint scales up — so the ratio stays
+ * pinned instead of improving with sqft (the real bug: width:depth ratio is
+ * scale-invariant, not just "too small"). Flooring the row's `min` depth at
+ * `dominantItemWidthShare / MAX_SANE_ROOM_ASPECT` makes the two axes agree.
+ */
+function minSaneDepthForRow(row: ProgramRoom[], width: number): number {
+  if (row.length === 0) return 0;
+  const rowIdeal = row.reduce((s, i) => s + i.idealArea, 0);
+  if (rowIdeal <= 0) return 0;
+  const dominant = row.reduce((max, i) => (i.idealArea > max.idealArea ? i : max), row[0]);
+  const dominantWidthShare = (dominant.idealArea / rowIdeal) * width;
+  // Round UP to the same 0.5ft grid the final row depth gets rounded to
+  // (see `roundTo(nearRowDepth/farRowDepth, 0.5)` below) — rounding the
+  // requirement itself down here would let the real depth land just under
+  // the sane threshold after that later rounding.
+  return Math.ceil((dominantWidthShare / MAX_SANE_ROOM_ASPECT) * 2) / 2;
+}
+
 function toRoom(p: ProgramRoom, rect: Rect): Room {
   return { id: p.id, type: p.type, label: p.label, x: rect.x, y: rect.y, w: rect.w, h: rect.h, areaSqft: round1(rect.w * rect.h) };
 }
@@ -386,8 +415,8 @@ function layoutPrivateZone(
   // clamp here let rooms overflow 0.5ft past the back exterior wall in
   // testing (clamping without re-normalizing broke the depth budget).
   const rowAlloc = allocateLengths(usableDepth, [
-    { id: "near", ideal: nearIdeal || 1, min: Math.min(8, usableDepth / 2) },
-    { id: "far", ideal: farIdeal || 1, min: Math.min(8, usableDepth / 2) },
+    { id: "near", ideal: nearIdeal || 1, min: Math.max(Math.min(8, usableDepth / 2), minSaneDepthForRow(nearRow, width)) },
+    { id: "far", ideal: farIdeal || 1, min: Math.max(Math.min(8, usableDepth / 2), minSaneDepthForRow(farRow, width)) },
   ]);
   const nearRowDepth = roundTo(rowAlloc.lengths.get("near") ?? usableDepth / 2, 0.5);
   const farRowDepth = roundTo(usableDepth - nearRowDepth, 0.5);
