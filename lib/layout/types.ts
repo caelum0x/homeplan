@@ -16,7 +16,10 @@ export type RoomType =
   | "office"
   | "garage"
   | "closet"
-  | "courtyard";
+  | "courtyard"
+  // Multi-story only (lib/layout/multiStory.ts): the stair strip on the ground floor and
+  // the identical-footprint landing strip directly above it on the upper floor.
+  | "stairs";
 
 export interface Room {
   id: string;
@@ -30,6 +33,15 @@ export interface Room {
   areaSqft: number;
   /** Optional override of the default per-type fill color (materials picker) — a hex string, e.g. "#e8d9c4" for oak floor. Undefined = use the default ROOM_FILL for this room's type. */
   floorColor?: string;
+  /**
+   * Only set on "stairs" rooms (lib/layout/multiStory.ts). The actual stair flight inside the
+   * strip, relative to the room's own top edge (room.y) so it survives a Studio move: treads run
+   * along the room's long (y) axis from `start` for `length` feet. `bottomAt` says which end of
+   * the flight is the bottom step ("start" = the smaller-y end). Identical on both floors of a
+   * multi-story plan — on the ground floor it's the stair you climb, on the upper floor it's the
+   * open stairwell you arrive through. Optional so every pre-existing plan still parses.
+   */
+  stairRun?: { start: number; length: number; bottomAt: "start" | "end"; floor: "lower" | "upper" };
 }
 
 export type FurnitureType =
@@ -138,4 +150,11 @@ export interface BriefInput {
   hasOffice: boolean;
   hasDining: boolean;
   raw: string;
+  /**
+   * Number of above-grade floors. Undefined or 1 = the original single-story engine
+   * (generateFloorPlan), completely unchanged. 2 = lib/layout/multiStory.ts: public rooms +
+   * garage on the ground floor, bedrooms/baths upstairs, one shared footprint and a vertically
+   * aligned stair.
+   */
+  stories?: 1 | 2;
 }

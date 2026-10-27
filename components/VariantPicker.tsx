@@ -40,7 +40,20 @@ export function VariantPicker({ options, onSelect }: VariantPickerProps) {
             onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--color-brand)")}
             onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--color-border)")}
           >
-            <FloorPlanSvg plan={option.plan} />
+            {option.floors ? (
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${option.floors.length}, 1fr)`, gap: 6 }}>
+                {option.floors.map((floor, i) => (
+                  <div key={i}>
+                    <FloorPlanSvg plan={floor} />
+                    <div style={{ fontSize: 11, color: "var(--color-ink-faint)", textAlign: "center", marginTop: 2 }}>
+                      {i === 0 ? "Ground" : "Upper"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <FloorPlanSvg plan={option.plan} />
+            )}
             <div style={{ marginTop: 10 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <strong style={{ fontSize: 14 }}>{option.variant.label}</strong>
@@ -50,9 +63,22 @@ export function VariantPicker({ options, onSelect }: VariantPickerProps) {
               </div>
               <p style={{ fontSize: 12.5, color: "var(--color-ink-soft)", marginTop: 4 }}>{option.variant.description}</p>
               <div style={{ display: "flex", gap: 10, marginTop: 8, fontSize: 12, color: "var(--color-ink-faint)" }}>
-                <span>{option.plan.rooms.length} rooms</span>
-                <span>{option.plan.totalAreaSqft} sqft</span>
-                {option.plan.warnings.length > 0 && <span style={{ color: "var(--color-warning-text)" }}>{option.plan.warnings.length} warning(s)</span>}
+                {option.floors ? (
+                  <>
+                    <span>{option.floors.length} floors</span>
+                    <span>{option.floors.reduce((n, f) => n + f.rooms.length, 0)} rooms</span>
+                    <span>{Math.round(option.floors.reduce((n, f) => n + f.totalAreaSqft, 0))} sqft</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{option.plan.rooms.length} rooms</span>
+                    <span>{option.plan.totalAreaSqft} sqft</span>
+                  </>
+                )}
+                {(() => {
+                  const count = (option.floors ?? [option.plan]).reduce((n, f) => n + f.warnings.length, 0);
+                  return count > 0 ? <span style={{ color: "var(--color-warning-text)" }}>{count} warning(s)</span> : null;
+                })()}
               </div>
             </div>
           </button>

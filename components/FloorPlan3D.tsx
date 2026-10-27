@@ -8,6 +8,7 @@ import type { Door, FloorPlan, FurnitureItem, Room, Wall, Window as PlanWindow }
 import { FURNITURE_CATALOG, type FurnitureSpec } from "@/lib/layout/furniture";
 import { resolveDoorSwingGeometry } from "@/lib/layout/doorSwings";
 import { ROOM_FILL } from "@/lib/renderSvg";
+import { STAIR_RISERS } from "@/lib/layout/stairSpec";
 
 /** Per-category overall height, used by buildFurnitureObject's composite shapes below — real geometric volume per piece, not a photoreal asset. */
 const CATEGORY_HEIGHT: Record<FurnitureSpec["category"], number> = {
@@ -185,6 +186,7 @@ const VIVID_ROOM_COLOR: Partial<Record<Room["type"], number>> = {
   garage: 0xc9c9c4,
   closet: 0xdcdcd6,
   hallway: 0xe8e4d8,
+  stairs: 0xc8a97e, // oak-stair tone, clearly distinct from the pale entry/hallway it sits beside
 };
 
 function vividForLighting(hex: string): THREE.Color {
@@ -491,6 +493,15 @@ export function FloorPlan3D({
       scene.add(floor);
     }
 
+    // Stairs: real stepped geometry from the room's own stairRun (the same flight lib/stairs.ts
+    // draws as treads in 2D). Ground floor = 14 solid treads rising toward the top of the flight,
+    // each one riser higher (floor-to-ceiling height / STAIR_RISERS); upper floor = the open
+    // stairwell over that same flight, drawn as a dark void with a guard rail along its open side.
+    for (const room of plan.rooms) {
+      const stair = room.type === "stairs" ? room.stairRun : undefined;
+      if (stair) scene.add(buildStairObject(room, stair, WALL_HEIGHT * wallHeightFactor));
+    }
+
     // Walls built as real solid CSG brushes with actual door/window holes cut through them —
     // see buildWallMeshes above (three-bvh-csg, not a hand-rolled boolean-geometry pass).
     for (const mesh of buildWallMeshes(plan.walls, plan.doors, plan.windows ?? [], wallHeightFactor)) {
@@ -621,4 +632,51 @@ export function FloorPlan3D({
       </p>
     </div>
   );
+}
+
+/** See the "Stairs" comment in the scene setup above. Coordinates match every other mesh: x = plan x, z = plan y, y = up. */
+function buildStairObject(room: Room, run: NonNullable<Room["stairRun"]>, storyHeight: number): THREE.Object3D {
+  const group = new THREE.Group();
+  const y0 = room.y + Math.max(0, run.start);
+  const y1 = Math.min(room.y + room.h, room.y + run.start + run.length);
+  const flight = y1 - y0;
+  if (flight <= 0.1) return group;
+  const treads = STAIR_RISERS - 1;
+  const treadDepth = flight / treads;
+  const riser = storyHeight / STAIR_RISERS;
+  const cx = room.x + room.w / 2;
+  const width = room.w - 0.3;
+
+  if (run.floor === "lower") {
+    const mat = new THREE.MeshStandardMaterial({ color: 0xb8925f, roughness: 0.7 });
+    for (let i = 0; i < treads; i++) {
+      // i = 0 is the bottom step; it sits at whichever end of the flight `bottomAt` names.
+      const fromBottom = run.bottomAt === "start" ? y0 + i * treadDepth : y1 - (i + 1) * treadDepth;
+      const height = (i + 1) * riser;
+      const step = new THREE.Mesh(new THREE.BoxGeometry(width, height, treadDepth), mat);
+      step.position.set(cx, 0.2 + height / 2, fromBottom + treadDepth / 2);
+      step.castShadow = true;
+      step.receiveShadow = true;
+      group.add(step);
+    }
+    return group;
+  }
+
+  const voidMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.05, flight),
+    new THREE.MeshStandardMaterial({ color: 0x3a342b, roughness: 1 }),
+  );
+  voidMesh.position.set(cx, 0.23, (y0 + y1) / 2);
+  group.add(voidMesh);
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x6b5a43, roughness: 0.6 });
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, flight), railMat);
+  rail.position.set(room.x + room.w - 0.15, 3, (y0 + y1) / 2);
+  group.add(rail);
+  const posts = Math.max(2, Math.round(flight / 2));
+  for (let i = 0; i <= posts; i++) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.8, 0.1), railMat);
+    post.position.set(room.x + room.w - 0.15, 0.2 + 1.4, y0 + (flight * i) / posts);
+    group.add(post);
+  }
+  return group;
 }

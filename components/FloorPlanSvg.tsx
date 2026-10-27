@@ -2,6 +2,7 @@ import type { Door, FloorPlan, Room } from "@/lib/layout/types";
 import { ROOM_FILL, SVG_PADDING as PADDING, SVG_SCALE as SCALE } from "@/lib/renderSvg";
 import { resolveDoorSwingGeometry } from "@/lib/layout/doorSwings";
 import { FurniturePiece } from "./FurniturePiece";
+import { StairMarks } from "./StairMarks";
 
 interface FloorPlanSvgProps {
   plan: FloorPlan;
@@ -64,6 +65,15 @@ function RoomRect({ room, toPx }: { room: Room; toPx: (ft: number) => number }) 
   const fontSize = Math.min(13, Math.max(9, w / 10));
 
   const clipId = `clip_${room.id}`;
+
+  if (room.type === "stairs" && room.stairRun) {
+    return (
+      <g>
+        <rect x={x} y={y} width={w} height={h} fill={room.floorColor ?? ROOM_FILL[room.type] ?? "#f0f0f0"} stroke="#c9c9c9" strokeWidth={1} />
+        <StairMarks room={room} toPx={toPx} />
+      </g>
+    );
+  }
 
   return (
     <g>

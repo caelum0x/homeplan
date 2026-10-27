@@ -2,6 +2,7 @@ import type { Door, FloorPlan, FurnitureItem, Room, RoomType } from "./layout/ty
 import { FURNITURE_CATALOG } from "./layout/furniture";
 import { furnitureIconDetails } from "./furnitureIcon";
 import { resolveDoorSwingGeometry } from "./layout/doorSwings";
+import { stairGraphics } from "./stairs";
 
 export const ROOM_FILL: Partial<Record<RoomType, string>> = {
   entry: "#e8e3d8",
@@ -19,6 +20,7 @@ export const ROOM_FILL: Partial<Record<RoomType, string>> = {
   garage: "#dfdfdc",
   closet: "#ececec",
   courtyard: "#d7e6cf", // real open void — a garden-green tint, not a room shade
+  stairs: "#dccab0", // oak-tread tone, deliberately darker than the entry it opens off so the two never read as one room
 };
 
 export const SVG_SCALE = 10; // px per foot
@@ -152,6 +154,8 @@ function furnitureToSvg(item: FurnitureItem, toPx: (ft: number) => number): stri
 }
 
 function roomToSvg(room: Room, toPx: (ft: number) => number): string {
+  const stair = stairGraphics(room);
+  if (stair) return stairRoomToSvg(room, stair, toPx);
   const x = toPx(room.x);
   const y = toPx(room.y);
   const w = toPx(room.w);
@@ -179,4 +183,30 @@ function roomToSvg(room: Room, toPx: (ft: number) => number): string {
 
 function escapeXml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * A stair strip: fill + real tread lines + UP/DN travel arrow (lib/stairs.ts computes the
+ * geometry once for every renderer), and the room's name rotated to run along the strip in
+ * its longest clear stretch — a 4ft strip clips any horizontal label past ~7 characters.
+ */
+function stairRoomToSvg(room: Room, stair: NonNullable<ReturnType<typeof stairGraphics>>, toPx: (ft: number) => number): string {
+  const fill = room.floorColor ?? ROOM_FILL[room.type] ?? "#f0f0f0";
+  const line = (seg: { x1: number; y1: number; x2: number; y2: number }, color: string, width: number) =>
+    `<line x1="${toPx(seg.x1)}" y1="${toPx(seg.y1)}" x2="${toPx(seg.x2)}" y2="${toPx(seg.y2)}" stroke="${color}" stroke-width="${width}" />`;
+  const nameX = toPx(stair.nameAt.x);
+  const nameY = toPx(stair.nameAt.y);
+  const parts = [
+    `<rect x="${toPx(room.x)}" y="${toPx(room.y)}" width="${toPx(room.w)}" height="${toPx(room.h)}" fill="${fill}" stroke="#c9c9c9" stroke-width="1" />`,
+    ...stair.treads.map((t) => line(t, "#8a7a60", 1)),
+    line(stair.arrow, "#4a4030", 1.2),
+    ...stair.arrowHead.map((h) => line(h, "#4a4030", 1.2)),
+    `<text x="${toPx(stair.labelAt.x)}" y="${toPx(stair.labelAt.y) + 3}" text-anchor="middle" font-size="8" font-weight="700" fill="#4a4030">${stair.label}</text>`,
+  ];
+  if (stair.nameAt.span >= 4) {
+    parts.push(
+      `<text x="${nameX}" y="${nameY}" transform="rotate(-90 ${nameX} ${nameY})" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="600" fill="#2b2b2b">${escapeXml(room.label)} · ${room.w.toFixed(1)}' x ${room.h.toFixed(1)}'</text>`,
+    );
+  }
+  return parts.join("\n");
 }

@@ -5,8 +5,8 @@ import { autoPlaceFurniture } from "./furniture";
 import { computeWindows } from "./windows";
 import { computeDoorSwings } from "./doorSwings";
 
-const HALLWAY_WIDTH = 3.5;
-const DOOR_WIDTH = 3;
+export const HALLWAY_WIDTH = 3.5;
+export const DOOR_WIDTH = 3;
 /** Width : depth ratio for the main footprint — a mild rectangle, not a square or a shoebox. */
 const ASPECT_RATIO = 1.35;
 /**
@@ -22,7 +22,7 @@ const ASPECT_RATIO_DEEP = 0.78;
 /** Private-room count (bedrooms + private baths) at which layoutPrivateZone switches to 2 rows. */
 const TWO_ROW_PRIVATE_THRESHOLD = 3;
 /** Width:depth ratio beyond which a bedroom/bathroom reads as an unrealistic sliver, not a usable room. */
-const MAX_SANE_ROOM_ASPECT = 2.2;
+export const MAX_SANE_ROOM_ASPECT = 2.2;
 /**
  * Real foyer depth target (feet), not a full-row-depth column. Found by
  * actually running the engine before this fix: every entry came out as a
@@ -35,8 +35,8 @@ const MAX_SANE_ROOM_ASPECT = 2.2;
  * own shallow full-width strip at the front of the public zone instead of
  * forcing it into the same shared-depth column as every other public room.
  */
-const ENTRY_DEPTH_TARGET = 7;
-const MIN_ENTRY_DEPTH = 4;
+export const ENTRY_DEPTH_TARGET = 7;
+export const MIN_ENTRY_DEPTH = 4;
 /** Minimum depth left over after carving out a closet from a sliver room — below this, the split isn't worth doing and the honest aspect-ratio warning stays instead. */
 const CLOSET_MIN_DEPTH = 3;
 /** Room types where carving off a closet from a too-deep sliver is a real, common architectural pattern (primary suite + walk-in closet, bath + linen closet) rather than a cosmetic relabeling. */
@@ -75,8 +75,8 @@ export const LAYOUT_VARIANTS: LayoutVariant[] = [
 ];
 
 /** Absolute floor/ceiling on the footprint ratio regardless of baseline*multiplier — keeps even a "Compact" variant on an already-deep (3+ bedroom) baseline from overshooting into unusably narrow side rooms. */
-const MIN_ASPECT_RATIO = 0.7;
-const MAX_ASPECT_RATIO = 2.0;
+export const MIN_ASPECT_RATIO = 0.7;
+export const MAX_ASPECT_RATIO = 2.0;
 
 /**
  * Picks the footprint width:depth ratio a plan should use by default: once the
@@ -88,7 +88,7 @@ const MAX_ASPECT_RATIO = 2.0;
  * from testing a real 3-bed/2-bath brief through the live app: this exact
  * brief produced a 35.6' x 9.0' (320.8 sqft) "Primary Bedroom" before this fix.
  */
-function computeBaselineAspectRatio(program: ReturnType<typeof buildRoomProgram>): number {
+export function computeBaselineAspectRatio(program: ReturnType<typeof buildRoomProgram>): number {
   const privateRoomCount = program.bedrooms.length + program.privateBaths.length;
   return privateRoomCount >= TWO_ROW_PRIVATE_THRESHOLD ? ASPECT_RATIO_DEEP : ASPECT_RATIO;
 }
@@ -274,7 +274,7 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
 
 // ---------------------------------------------------------------------------
 
-function sumIdeal(items: ProgramRoom[]): number {
+export function sumIdeal(items: ProgramRoom[]): number {
   return items.reduce((s, i) => s + i.idealArea, 0);
 }
 
@@ -284,7 +284,7 @@ function estimateHallwayIdeal(privateRoomCount: number, width: number): number {
   return HALLWAY_WIDTH * width * (privateRoomCount >= 3 ? 0.5 : 0.25);
 }
 
-function toAllocItem(depth: number) {
+export function toAllocItem(depth: number) {
   return (p: ProgramRoom): AllocItem => ({
     id: p.id,
     ideal: depth > 0 ? p.idealArea / depth : p.idealArea,
@@ -308,7 +308,7 @@ function toAllocItem(depth: number) {
  * scale-invariant, not just "too small"). Flooring the row's `min` depth at
  * `dominantItemWidthShare / MAX_SANE_ROOM_ASPECT` makes the two axes agree.
  */
-function minSaneDepthForRow(row: ProgramRoom[], width: number): number {
+export function minSaneDepthForRow(row: ProgramRoom[], width: number): number {
   if (row.length === 0) return 0;
   const rowIdeal = row.reduce((s, i) => s + i.idealArea, 0);
   if (rowIdeal <= 0) return 0;
@@ -321,11 +321,11 @@ function minSaneDepthForRow(row: ProgramRoom[], width: number): number {
   return Math.ceil((dominantWidthShare / MAX_SANE_ROOM_ASPECT) * 2) / 2;
 }
 
-function toRoom(p: ProgramRoom, rect: Rect): Room {
+export function toRoom(p: ProgramRoom, rect: Rect): Room {
   return { id: p.id, type: p.type, label: p.label, x: rect.x, y: rect.y, w: rect.w, h: rect.h, areaSqft: round1(rect.w * rect.h) };
 }
 
-interface PrivateZoneResult {
+export interface PrivateZoneResult {
   rects: Map<string, Rect>;
   adjacency: Array<{ a: string; b: string }>;
   hallwayRect: Rect | null;
@@ -338,7 +338,7 @@ interface PrivateZoneResult {
   extraRooms: ProgramRoom[];
 }
 
-function layoutPrivateZone(
+export function layoutPrivateZone(
   items: ProgramRoom[],
   width: number,
   publicDepth: number,
@@ -740,7 +740,7 @@ interface SliverSplitResult {
  * guard below) — otherwise the honest "unrealistic shape" warning stays, rather
  * than silently shipping a worse split.
  */
-function splitSliverRooms(
+export function splitSliverRooms(
   items: ProgramRoom[],
   rects: Map<string, Rect>,
   rowDepth: number,
@@ -813,7 +813,7 @@ function buildSequentialAdjacency(
   return adjacency;
 }
 
-function buildWallsAndDoors(
+export function buildWallsAndDoors(
   rooms: Room[],
   mainDims: { width: number; depth: number },
   adjacency: Array<{ a: string; b: string }>,
@@ -903,7 +903,7 @@ const ASPECT_CHECKED_TYPES = new Set(["primary_bedroom", "bedroom", "primary_bat
  * and would make a real architect bounce. Surfaced as the same kind of honest, computed
  * warning as `checkMinimums`, never silently shipped as if it were fine.
  */
-function checkAspectRatios(rooms: Room[], warnings: string[]) {
+export function checkAspectRatios(rooms: Room[], warnings: string[]) {
   for (const room of rooms) {
     if (!ASPECT_CHECKED_TYPES.has(room.type)) continue;
     const long = Math.max(room.w, room.h);
@@ -923,7 +923,7 @@ function checkAspectRatios(rooms: Room[], warnings: string[]) {
  * failure mode this check exists to catch (found by actually generating examples
  * and reading the real door list, not assumed from the code).
  */
-function checkGarageAccess(rooms: Room[], doors: Door[], warnings: string[]) {
+export function checkGarageAccess(rooms: Room[], doors: Door[], warnings: string[]) {
   const garage = rooms.find((r) => r.type === "garage");
   if (!garage) return;
   const hasInteriorDoor = doors.some((d) => d.connects.includes(garage.id) && !d.connects.includes("exterior"));
@@ -932,7 +932,7 @@ function checkGarageAccess(rooms: Room[], doors: Door[], warnings: string[]) {
   }
 }
 
-function checkMinimums(rooms: Room[], warnings: string[]) {
+export function checkMinimums(rooms: Room[], warnings: string[]) {
   for (const room of rooms) {
     if (room.type === "hallway" || room.type === "courtyard") continue;
     const min = getMinArea(room.type);
@@ -944,11 +944,11 @@ function checkMinimums(rooms: Room[], warnings: string[]) {
   }
 }
 
-function roundTo(value: number, step: number): number {
+export function roundTo(value: number, step: number): number {
   return Math.round(value / step) * step;
 }
 
-function round1(value: number): number {
+export function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
@@ -964,13 +964,16 @@ function round1(value: number): number {
  * nothing and only broke exactness. Keep full precision on x/y/w/h; only `areaSqft` (a derived,
  * already-rounded display number, not a coordinate two rooms must agree on) stays rounded.
  */
-function roundRoom(r: Room): Room {
+export function roundRoom(r: Room): Room {
   return { ...r, areaSqft: round1(r.areaSqft) };
 }
 
 export interface FloorPlanOption {
   variant: LayoutVariant;
+  /** The plan shown/edited by default — for a multi-story option, the ground floor (floors[0]). */
   plan: FloorPlan;
+  /** Only set for a multi-story (stories: 2) option: every floor, ground first, all sharing one footprint. */
+  floors?: FloorPlan[];
 }
 
 /**

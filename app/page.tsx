@@ -16,6 +16,7 @@ import type { FloorPlanOption } from "@/lib/layout/generate";
 import { downloadPlanAsPng } from "@/lib/exportPng";
 import { buildShareUrl, readPlanFromLocation } from "@/lib/sharePlan";
 import { saveTemplate } from "@/lib/templates";
+import { parseDescription } from "@/lib/parseDescription";
 import heroExamplePlanData from "@/lib/data/heroExamplePlan.json";
 
 // Real engine output (3 bed, 2 bath, home office — see plans/homeplan.md for how this
@@ -37,11 +38,11 @@ type EntryMode = "describe" | "templates" | "upload";
 
 class ProRequiredError extends Error {}
 
-async function downloadExport(plan: FloorPlan, format: "pdf" | "dxf") {
+async function downloadExport(payload: { plan: FloorPlan } | { floors: FloorPlan[] }, format: "pdf" | "dxf", filename: string) {
   const res = await fetch(`/api/export/${format}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ plan }),
+    body: JSON.stringify(payload),
   });
   if (res.status === 402) {
     const data = await res.json().catch(() => ({}));
@@ -55,7 +56,7 @@ async function downloadExport(plan: FloorPlan, format: "pdf" | "dxf") {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `homeplan-floor-plan.${format}`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -64,6 +65,7 @@ async function downloadExport(plan: FloorPlan, format: "pdf" | "dxf") {
 
 const EXAMPLES = [
   "3-bedroom, 2-bath, ~1400 sqft, open-plan kitchen/living",
+  "2-story, 4 bed 3.5 bath, 2800 sqft, 2-car garage, home office",
   "4 bed 3 bath house, 2200 square feet, with a 2-car garage and a home office",
   "cozy 2 bedroom 1 bath cottage, 900 sqft",
 ];
@@ -83,6 +85,12 @@ export default function Home() {
   const [saveTemplateName, setSaveTemplateName] = useState("");
   const [templateSaved, setTemplateSaved] = useState(false);
   const [proStatus, setProStatus] = useState<{ isPro: boolean; hosted: boolean } | null>(null);
+  // Explicit story choice from the toggle; null = follow whatever the description says (default 1).
+  const [storiesChoice, setStoriesChoice] = useState<1 | 2 | null>(null);
+  // Multi-story plans: every floor (ground first). `plan` is always the floor being viewed/edited,
+  // kept in sync with floors[activeFloor] by updatePlan so edits on one floor survive switching.
+  const [floors, setFloors] = useState<FloorPlan[] | null>(null);
+  const [activeFloor, setActiveFloor] = useState(0);
   const [exportUpgradeNeeded, setExportUpgradeNeeded] = useState(false);
 
   const heroBedCount = heroExample.rooms.filter((r) => r.type === "bedroom" || r.type === "primary_bedroom").length;
@@ -92,7 +100,7 @@ export default function Home() {
   useEffect(() => {
     const shared = readPlanFromLocation();
     if (shared) {
-      setPlan(shared);
+      loadSinglePlan(shared);
       setSelectedVariantLabel("Shared plan");
       setStage("editing");
     }
@@ -109,6 +117,26 @@ export default function Home() {
   }, []);
 
   const exportGated = Boolean(proStatus?.hosted && !proStatus?.isPro);
+  const effectiveStories = storiesChoice ?? parseDescription(description).stories ?? 1;
+
+  /** Loads a single-story plan (template, share link, upload, hero example) — clears any multi-story state. */
+  function loadSinglePlan(next: FloorPlan | null) {
+    setFloors(null);
+    setActiveFloor(0);
+    setPlan(next);
+  }
+
+  /** Every edit (Studio, chat-edit) goes through here so the active floor's copy in `floors` never goes stale. */
+  function updatePlan(next: FloorPlan) {
+    setPlan(next);
+    setFloors((prev) => (prev ? prev.map((f, i) => (i === activeFloor ? next : f)) : prev));
+  }
+
+  function switchFloor(index: number) {
+    if (!floors || !floors[index]) return;
+    setActiveFloor(index);
+    setPlan(floors[index]);
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -118,18 +146,18 @@ export default function Home() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description }),
+        body: JSON.stringify(storiesChoice ? { description, stories: storiesChoice } : { description }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Something went wrong.");
         setResult(null);
-        setPlan(null);
+        loadSinglePlan(null);
         setStage("idle");
         return;
       }
       setResult(data);
-      setPlan(null);
+      loadSinglePlan(null);
       setStage("variants");
     } catch {
       setError("Could not reach the generator. Try again.");
@@ -138,7 +166,9 @@ export default function Home() {
   }
 
   function selectVariant(option: FloorPlanOption) {
-    setPlan(option.plan);
+    setFloors(option.floors ?? null);
+    setActiveFloor(0);
+    setPlan(option.floors?.[0] ?? option.plan);
     setSelectedVariantLabel(option.variant.label);
     setViewMode("plan");
     setStage("editing");
@@ -149,9 +179,13 @@ export default function Home() {
     setExporting(format);
     setError(null);
     setExportUpgradeNeeded(false);
+    // Multi-story: PDF gets every floor as its own page (one document, shared scale); PNG/DXF
+    // export the floor currently shown, named after it, so each floor can be downloaded separately.
+    const floorSuffix = floors ? `-floor-${activeFloor + 1}` : "";
     try {
-      if (format === "png") await downloadPlanAsPng(plan);
-      else await downloadExport(plan, format);
+      if (format === "png") await downloadPlanAsPng(plan, `homeplan-floor-plan${floorSuffix}.png`);
+      else if (format === "pdf" && floors) await downloadExport({ floors }, "pdf", `homeplan-${floors.length}-story-floor-plans.pdf`);
+      else await downloadExport({ plan }, format, `homeplan-floor-plan${floorSuffix}.${format}`);
     } catch (err) {
       if (err instanceof ProRequiredError) setExportUpgradeNeeded(true);
       setError(err instanceof Error ? err.message : `Could not export ${format.toUpperCase()}.`);
@@ -175,7 +209,7 @@ export default function Home() {
 
   function handleTemplateSelect(templatePlan: FloorPlan, label: string) {
     setResult(null);
-    setPlan(templatePlan);
+    loadSinglePlan(templatePlan);
     setSelectedVariantLabel(label);
     setTraceImageUrl(null);
     setViewMode("plan");
@@ -209,7 +243,7 @@ export default function Home() {
             const options: FloorPlanOption[] = vecData.options;
             const classic = options.find((o) => o.variant.id === "classic") ?? options[0];
             setResult(vecData);
-            setPlan(classic.plan);
+            loadSinglePlan(classic.plan);
             setSelectedVariantLabel(`${classic.variant.label} (vectorized from your upload — ${vecData.summary})`);
             setTraceImageUrl(imageDataUrl);
             setViewMode("studio");
@@ -235,7 +269,7 @@ export default function Home() {
       const options: FloorPlanOption[] = data.options;
       const classic = options.find((o) => o.variant.id === "classic") ?? options[0];
       setResult(data);
-      setPlan(classic.plan);
+      loadSinglePlan(classic.plan);
       setSelectedVariantLabel(`${classic.variant.label} (starter, trace onto your upload)`);
       setTraceImageUrl(imageDataUrl);
       setViewMode("studio");
@@ -352,6 +386,19 @@ export default function Home() {
                 rows={3}
               />
               <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+                <div className="segmented" role="group" aria-label="Number of stories">
+                  {([1, 2] as const).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setStoriesChoice(n)}
+                      className={`segmented-btn ${effectiveStories === n ? "active" : ""}`}
+                      aria-pressed={effectiveStories === n}
+                    >
+                      {n === 1 ? "1 story" : "2 stories"}
+                    </button>
+                  ))}
+                </div>
                 <button type="submit" className="btn btn-primary" disabled={stage === "loading" || description.trim().length < 5}>
                   {stage === "loading" ? "Generating…" : "Generate floor plan"}
                   {stage !== "loading" && <ArrowIcon />}
@@ -418,8 +465,13 @@ export default function Home() {
                 Footprint: <strong>{plan.footprint.w}&apos; × {plan.footprint.h}&apos;</strong>
               </span>
               <span className="stat-pill">
-                Total: <strong>{plan.totalAreaSqft} sqft</strong>
+                {floors ? "This floor" : "Total"}: <strong>{plan.totalAreaSqft} sqft</strong>
               </span>
+              {floors && (
+                <span className="stat-pill">
+                  All {floors.length} floors: <strong>{Math.round(floors.reduce((sum, f) => sum + f.totalAreaSqft, 0) * 10) / 10} sqft</strong>
+                </span>
+              )}
               {selectedVariantLabel && (
                 <span className="stat-pill">
                   Variant: <strong>{selectedVariantLabel}</strong>
@@ -431,6 +483,28 @@ export default function Home() {
                 </button>
               )}
             </div>
+
+            {floors && (
+              <div className="toolbar" style={{ marginBottom: 10 }}>
+                <div className="segmented" role="tablist" aria-label="Floor">
+                  {floors.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeFloor === i}
+                      onClick={() => switchFloor(i)}
+                      className={`segmented-btn ${activeFloor === i ? "active" : ""}`}
+                    >
+                      {i === 0 ? "Floor 1 · Ground" : `Floor ${i + 1} · Upper`}
+                    </button>
+                  ))}
+                </div>
+                <span style={{ fontSize: 12.5, color: "var(--color-ink-faint)" }}>
+                  Same footprint on every floor — the stair sits in the identical spot on both.
+                </span>
+              </div>
+            )}
 
             <div className="toolbar">
               <div className="segmented">
@@ -457,7 +531,7 @@ export default function Home() {
                 </button>
                 <button type="button" onClick={() => handleExport("pdf")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
                   <DownloadIcon />
-                  {exporting === "pdf" ? "Exporting…" : exportGated ? "PDF (Pro)" : "PDF"}
+                  {exporting === "pdf" ? "Exporting…" : `${floors ? `PDF (${floors.length} floors)` : "PDF"}${exportGated ? " · Pro" : ""}`}
                 </button>
                 <button type="button" onClick={() => handleExport("dxf")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
                   <DownloadIcon />
@@ -493,13 +567,13 @@ export default function Home() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
               {viewMode === "plan" && <FloorPlanSvg plan={plan} />}
-              {viewMode === "studio" && <FloorPlanStudio plan={plan} onChange={setPlan} traceImageUrl={traceImageUrl} />}
+              {viewMode === "studio" && <FloorPlanStudio key={`studio-${activeFloor}`} plan={plan} onChange={updatePlan} traceImageUrl={traceImageUrl} />}
               {viewMode === "3d" && <FloorPlan3D plan={plan} />}
               {viewMode === "render" && <AiRenderPanel plan={plan} />}
             </div>
 
             <div style={{ marginTop: 18 }}>
-              <ChatEditPanel plan={plan} onChange={setPlan} />
+              <ChatEditPanel key={`chat-${activeFloor}`} plan={plan} onChange={updatePlan} />
             </div>
 
             <h2 className="section-heading">Rooms</h2>

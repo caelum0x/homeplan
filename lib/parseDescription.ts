@@ -49,7 +49,12 @@ export function parseDescription(raw: string): BriefInput {
   const hasOffice = /office|study|den\b/.test(text);
   const hasDining = /dining/.test(text) || !openPlan;
 
+  // Only set when the brief actually says so — an omitted field keeps the original
+  // single-story engine (and this function's exact previous output) for every other brief.
+  const stories = parseStories(text);
+
   return {
+    ...(stories ? { stories } : {}),
     bedrooms: clamp(Math.round(bedrooms), 1, 8),
     bathrooms: clamp(roundHalf(bathrooms), 1, 6),
     sqft: clamp(Math.round(sqft), 400, 12000),
@@ -59,6 +64,12 @@ export function parseDescription(raw: string): BriefInput {
     hasDining,
     raw,
   };
+}
+
+function parseStories(text: string): 1 | 2 | undefined {
+  if (/\b(?:2|two|double)[- ]?(?:stor(?:e?y|eys|ies)|floors?|levels?)\b|\bupstairs\b/.test(text)) return 2;
+  if (/\b(?:1|one|single)[- ]?(?:stor(?:e?y|eys|ies)|floor|level)\b|\branch\b|\bbungalow\b/.test(text)) return 1;
+  return undefined;
 }
 
 function firstNumber(text: string, patterns: RegExp[], fallback: number): number {

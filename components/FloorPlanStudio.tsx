@@ -16,6 +16,7 @@ import {
   setWallColor,
 } from "@/lib/layout/edit";
 import { FURNITURE_CATALOG } from "@/lib/layout/furniture";
+import { StairMarks } from "./StairMarks";
 import { ROOM_FILL, SVG_PADDING as PADDING, SVG_SCALE as SCALE } from "@/lib/renderSvg";
 import { FurniturePiece } from "./FurniturePiece";
 import { DoorMark } from "./FloorPlanSvg";
@@ -311,7 +312,9 @@ export function FloorPlanStudio({ plan, onChange, traceImageUrl }: FloorPlanStud
                 <clipPath id={`clip_${room.id}`}>
                   <rect x={toPx(room.x)} y={toPx(room.y)} width={toPx(room.w)} height={toPx(room.h)} />
                 </clipPath>
+                <StairMarks room={room} toPx={toPx} />
                 {/* Anchored near the top of the room, not centered, so furniture pieces in the room body never collide with the label. */}
+                {!(room.type === "stairs" && room.stairRun) && (
                 <g clipPath={`url(#clip_${room.id})`} style={{ pointerEvents: "none" }}>
                   <text
                     x={toPx(room.x) + toPx(room.w) / 2}
@@ -333,6 +336,7 @@ export function FloorPlanStudio({ plan, onChange, traceImageUrl }: FloorPlanStud
                     {room.w.toFixed(1)}&apos; × {room.h.toFixed(1)}&apos; ({room.areaSqft} sqft)
                   </text>
                 </g>
+                )}
                 {selection?.kind === "room" && selection.id === room.id && (
                   <rect
                     x={toPx(room.x) + toPx(room.w) - 8}

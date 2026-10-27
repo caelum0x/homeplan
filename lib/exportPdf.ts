@@ -3,11 +3,12 @@
 // the SVG, real vector rectangles/lines/text placed from the plan's actual
 // coordinates, so dimensions stay crisp and selectable at any zoom level.
 
-import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
+import { degrees, PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import type { Door, FloorPlan, FurnitureItem, Room } from "./layout/types";
 import { FURNITURE_CATALOG } from "./layout/furniture";
 import { furnitureFootprintCorners, furnitureIconMarks } from "./furnitureTransform";
 import { resolveDoorSwingGeometry } from "./layout/doorSwings";
+import { stairGraphics } from "./stairs";
 
 const MARGIN = 36; // points
 const PAGE_W = 792; // US Letter, landscape
@@ -30,18 +31,40 @@ const ROOM_FILL_RGB: Partial<Record<Room["type"], [number, number, number]>> = {
   garage: [0.87, 0.87, 0.86],
   closet: [0.93, 0.93, 0.93],
   courtyard: [0.84, 0.9, 0.81],
+  stairs: [0.86, 0.79, 0.69],
 };
 
 /** Builds a real multi-element vector PDF (not a screenshot) for one floor plan. Returns the raw PDF bytes. */
 export async function floorPlanToPdf(plan: FloorPlan): Promise<Uint8Array> {
+  return floorPlansToPdf([{ plan, title: "HomePlan — generated floor plan" }]);
+}
+
+export interface PdfSheet {
+  plan: FloorPlan;
+  title: string;
+}
+
+/**
+ * One real vector page per sheet, in order — used for a multi-story plan (one page per
+ * floor, every floor drawn at the SAME scale so the stair and exterior walls line up page to
+ * page exactly like a real drawing set). A single sheet produces the same page as before.
+ */
+export async function floorPlansToPdf(sheets: PdfSheet[]): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  const page = doc.addPage([PAGE_W, PAGE_H]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-
   const drawableW = PAGE_W - MARGIN * 2;
   const drawableH = PAGE_H - MARGIN * 2 - 40; // reserve 40pt header for title/meta
-  const scale = Math.min(drawableW / Math.max(plan.footprint.w, 1), drawableH / Math.max(plan.footprint.h, 1));
+  const maxW = Math.max(1, ...sheets.map((s) => s.plan.footprint.w));
+  const maxH = Math.max(1, ...sheets.map((s) => s.plan.footprint.h));
+  const scale = Math.min(drawableW / maxW, drawableH / maxH);
+  for (const sheet of sheets) {
+    drawPlanPage(doc.addPage([PAGE_W, PAGE_H]), sheet.plan, sheet.title, scale, font, fontBold);
+  }
+  return doc.save();
+}
+
+function drawPlanPage(page: PDFPage, plan: FloorPlan, title: string, scale: number, font: PDFFont, fontBold: PDFFont) {
 
   const originX = MARGIN;
   const originY = MARGIN; // bottom-left of the drawing area in PDF space
@@ -52,7 +75,7 @@ export async function floorPlanToPdf(plan: FloorPlan): Promise<Uint8Array> {
   const px = (x: number) => originX + toPt(x);
   const py = (y: number) => originY + (planHeightPt - toPt(y));
 
-  page.drawText("HomePlan — generated floor plan", {
+  page.drawText(title, {
     x: MARGIN,
     y: PAGE_H - MARGIN + 10,
     size: 14,
@@ -81,6 +104,8 @@ export async function floorPlanToPdf(plan: FloorPlan): Promise<Uint8Array> {
       borderColor: rgb(0.79, 0.79, 0.79),
       borderWidth: 0.75,
     });
+
+    if (drawStairs(page, room, px, py, toPt, font)) continue;
 
     drawCenteredText(page, room.label, x + w / 2, yBottom + h / 2 + 5, font, Math.min(10, Math.max(6, w / 9)));
     drawCenteredText(
@@ -137,8 +162,40 @@ export async function floorPlanToPdf(plan: FloorPlan): Promise<Uint8Array> {
   for (const item of plan.furniture ?? []) {
     drawFurniture(page, item, px, py, toPt, font);
   }
+}
 
-  return doc.save();
+/** Treads, travel arrow, UP/DN and a rotated name for a stair strip (geometry from lib/stairs.ts, shared with every other renderer). False for any other room. */
+function drawStairs(
+  page: PDFPage,
+  room: Room,
+  px: (ft: number) => number,
+  py: (ft: number) => number,
+  toPt: (ft: number) => number,
+  font: PDFFont,
+): boolean {
+  const stair = stairGraphics(room);
+  if (!stair) return false;
+  const line = (sg: { x1: number; y1: number; x2: number; y2: number }, thickness: number, color = rgb(0.54, 0.48, 0.38)) =>
+    page.drawLine({ start: { x: px(sg.x1), y: py(sg.y1) }, end: { x: px(sg.x2), y: py(sg.y2) }, thickness, color });
+  for (const t of stair.treads) line(t, 0.5);
+  line(stair.arrow, 0.8, rgb(0.29, 0.25, 0.19));
+  for (const h of stair.arrowHead) line(h, 0.8, rgb(0.29, 0.25, 0.19));
+  drawCenteredText(page, stair.label, px(stair.labelAt.x), py(stair.labelAt.y) - 2.5, font, 6);
+  if (stair.nameAt.span >= 4) {
+    const text = `${room.label} · ${room.w.toFixed(1)}' x ${room.h.toFixed(1)}'`;
+    const size = Math.min(7, Math.max(5, toPt(room.w) / 4));
+    const textW = font.widthOfTextAtSize(text, size);
+    // Rotated 90° to run up the strip; centred on nameAt (pdf-lib rotates around the text origin).
+    page.drawText(text, {
+      x: px(stair.nameAt.x) + size / 3,
+      y: py(stair.nameAt.y) - textW / 2,
+      size,
+      font,
+      color: rgb(0.2, 0.2, 0.2),
+      rotate: degrees(90),
+    });
+  }
+  return true;
 }
 
 /**

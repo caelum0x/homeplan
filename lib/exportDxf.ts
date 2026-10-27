@@ -7,6 +7,7 @@ import { DxfWriter, point2d, point3d, Units } from "@tarikjabiri/dxf";
 import type { FloorPlan, FurnitureItem } from "./layout/types";
 import { furnitureFootprintCorners, furnitureIconMarks, type PlanPoint } from "./furnitureTransform";
 import { resolveDoorSwingGeometry } from "./layout/doorSwings";
+import { stairGraphics } from "./stairs";
 
 /**
  * Builds a DXF document string for one floor plan. Coordinates are in feet;
@@ -46,6 +47,21 @@ export function floorPlanToDxf(plan: FloorPlan): string {
   dxf.setCurrentLayerName("WALLS");
   for (const wall of plan.walls) {
     dxf.addLine(point3d(wall.x1, flip(wall.y1), 0), point3d(wall.x2, flip(wall.y2), 0));
+  }
+
+  // Stair flights: one LINE per tread + the travel arrow and an UP/DN label, on their own layer
+  // (same geometry lib/stairs.ts gives every other renderer), so a multi-story plan's flight
+  // overlays exactly between the per-floor DXFs.
+  const stairRooms = plan.rooms.map((room) => ({ room, stair: stairGraphics(room) })).filter((s) => s.stair);
+  if (stairRooms.length > 0) {
+    dxf.addLayer("STAIRS", 30, "Continuous"); // 30 = orange
+    dxf.setCurrentLayerName("STAIRS");
+    for (const { stair } of stairRooms) {
+      for (const sg of [...stair!.treads, stair!.arrow, ...stair!.arrowHead]) {
+        dxf.addLine(point3d(sg.x1, flip(sg.y1), 0), point3d(sg.x2, flip(sg.y2), 0));
+      }
+      dxf.addText(point3d(stair!.labelAt.x - 0.4, flip(stair!.labelAt.y) - 0.2, 0), 0.5, stair!.label);
+    }
   }
 
   dxf.setCurrentLayerName("DOORS");

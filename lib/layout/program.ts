@@ -40,6 +40,9 @@ const IDEAL_AREA: Record<RoomType, number> = {
   // the two wings (see generate.ts's layoutPrivateZoneCourtyard), never from
   // this ideal-area table. 0 so it never competes with real rooms for budget.
   courtyard: 0,
+  // Not budgeted either — the stair strip is a fixed reserved rectangle (see
+  // lib/layout/multiStory.ts's STAIRS_WIDTH), never sized from this table.
+  stairs: 0,
 };
 
 const MIN_AREA: Record<RoomType, number> = {
@@ -58,6 +61,10 @@ const MIN_AREA: Record<RoomType, number> = {
   garage: 200,
   closet: 12,
   courtyard: 0, // never checked against a minimum — see checkMinimums' explicit skip
+  // A real code-minimum straight stair: IRC R311.7 — 36" min clear width, 7.75" max riser,
+  // 10" min tread — for ~9.5ft floor-to-floor is 15 risers / 14 treads ≈ 11.7ft of run, plus a
+  // 36"-deep landing at the top and bottom (IRC R311.7.6): 3ft × (11.7 + 3 + 3) ≈ 53 sqft.
+  stairs: 53,
 };
 
 const MIN_WIDTH: Record<RoomType, number> = {
@@ -76,6 +83,7 @@ const MIN_WIDTH: Record<RoomType, number> = {
   garage: 11,
   closet: 3,
   courtyard: 8, // unused by the allocator (courtyard is never passed through allocateLengths) — present only for Record<RoomType,...> completeness
+  stairs: 3, // IRC R311.7.1 minimum clear stair width (36")
 };
 
 export function getMinArea(type: RoomType): number {
