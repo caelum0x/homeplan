@@ -1,6 +1,6 @@
 import type { BriefInput, Door, FloorPlan, Room, RoomType, Wall } from "./types";
 import { buildRoomProgram, getMinArea, type ProgramRoom } from "./program";
-import { allocateLengths, layoutRow, sharedEdgeOverlap, type AllocItem, type Rect } from "./geometry";
+import { allocateLengths, layoutColumn, layoutRow, sharedEdgeOverlap, type AllocItem, type Rect } from "./geometry";
 import { autoPlaceFurniture } from "./furniture";
 import { computeWindows } from "./windows";
 
@@ -171,7 +171,20 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
   }
   const publicToPrivateAnchor = privateZone.hallwayRect ? "hallway" : privateProgramRooms[0]?.id;
   if (publicToPrivateAnchor) {
-    adjacency.push({ a: lastPublicRoom.id, b: publicToPrivateAnchor });
+    // Pick whichever already-placed public-zone room actually shares an edge with the
+    // private-zone anchor, instead of always `lastPublicRoom`. That default is correct
+    // whenever the anchor spans the full house width (the "single"/"double-row"
+    // topologies' hallways both do), since every public room touches a full-width
+    // hallway — but the side-hallway topology's corridor only spans one side of the
+    // house (x = 0..HALLWAY_WIDTH), so only whichever public room actually ends up
+    // above it (not necessarily the last one in the row) really touches it. Found by
+    // tracing the exact geometry while adding that topology, not by testing after the
+    // fact — the same "never fake a door" discipline as the garage-access fix above.
+    const anchorRect = publicToPrivateAnchor === "hallway" ? privateZone.hallwayRect! : privateZone.rects.get(publicToPrivateAnchor);
+    const touchingPublicRoom = [program.entry, ...otherPublicRooms]
+      .map((p) => rooms.find((r) => r.id === p.id))
+      .find((rect): rect is Room => !!rect && !!anchorRect && !!sharedEdgeOverlap(rect, anchorRect));
+    adjacency.push({ a: (touchingPublicRoom ?? lastPublicRoom).id, b: publicToPrivateAnchor });
   }
 
   // ---- Garage: attached as its own block beside the main footprint, with a real
@@ -276,9 +289,13 @@ function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: num
   const secondaryBedrooms = others.filter((i) => i.type !== "bath");
   const ordered = [primary, ...(ensuite ? [ensuite] : []), ...secondaryBedrooms, ...sharedBaths];
 
-  const useTwoRows = ordered.length >= 3 && privateDepth >= HALLWAY_WIDTH + 16;
+  const topology = pickPrivateTopology(ordered.length, width, privateDepth);
 
-  if (!useTwoRows) {
+  if (topology === "side-hallway") {
+    return layoutPrivateZoneSideHallway(ordered, primary, ensuite, width, publicDepth, privateDepth);
+  }
+
+  if (topology === "single") {
     const hallwayDepth = items.length > 1 ? Math.min(HALLWAY_WIDTH, privateDepth * 0.25) : 0;
     const rowDepth = privateDepth - hallwayDepth;
     const row = layoutRow(ordered.map(toAllocItem(rowDepth)), 0, publicDepth + hallwayDepth, width, rowDepth);
@@ -361,6 +378,107 @@ function layoutPrivateZone(items: ProgramRoom[], width: number, publicDepth: num
     feasible: rowAlloc.feasible && nearLayout.feasible && farLayout.feasible,
     extraRooms: [...nearSplit.extraRooms, ...farSplit.extraRooms],
   };
+}
+
+/**
+ * Picks which of the private zone's genuinely distinct topologies to use, based
+ * on the room program's own shape (private room count, available width/depth) —
+ * not one fixed skeleton stretched for every brief. This is the real fix for the
+ * 2026-10-27 flagship audit's deepest finding (`plans/homeplan.md`): every plan,
+ * regardless of brief, used the same topology at different proportions. Three
+ * genuinely different shapes, each with its own room adjacency/aspect/door
+ * pattern:
+ * - "single": one row behind a shallow end-of-row hallway (1-2 private rooms —
+ *   a hallway doesn't earn its square footage for just a primary suite).
+ * - "side-hallway": a single-loaded corridor — one column of rooms stacked
+ *   front-to-back off a vertical hallway running the full private depth. The
+ *   common real case for a 3-4 room private program; see `layoutPrivateZoneSideHallway`.
+ * - "double-row": the original center-hallway, two rows either side of a
+ *   horizontal hallway — reserved for larger (5+) private programs, where a
+ *   single column would stack too many rooms too shallow, and only when
+ *   there's enough depth for a second row.
+ */
+function pickPrivateTopology(count: number, width: number, privateDepth: number): "single" | "side-hallway" | "double-row" {
+  if (count <= 2) return "single";
+  const sideHallwayWidthOk = width - HALLWAY_WIDTH >= 9;
+  if (count <= 4 && sideHallwayWidthOk) return "side-hallway";
+  if (privateDepth >= HALLWAY_WIDTH + 16) return "double-row";
+  return sideHallwayWidthOk ? "side-hallway" : "single";
+}
+
+/**
+ * Side-hallway private zone — a single-loaded corridor running the full private-zone
+ * depth along one side of the house (`x = 0`), with every bedroom/bath opening
+ * directly off it from a single column stacked front-to-back, instead of side by
+ * side in a row. Real, different geometry from the center-hallway "double-row"
+ * topology below: different room proportions (depth varies per room instead of
+ * width), different adjacency order (every room touches the hallway directly,
+ * there's no near/far split), different door placement. The primary suite anchors
+ * the far end of the column (deepest from the public zone — the quiet end, same
+ * intent as the double-row topology's "far row").
+ *
+ * Implemented by laying items out in a column (shared width, varying depth) via
+ * `layoutColumn`, then reusing `splitSliverRooms` — which assumes a shared *depth*
+ * with the varying axis as width — through a 90-degree transpose (swap x<->y,
+ * w<->h on every rect). That carve logic only ever compares a rect's long side to
+ * its short side and carves the shared axis down to a saner target, so it is
+ * orientation-agnostic; transposing in and back out is exact, not an approximation.
+ */
+function layoutPrivateZoneSideHallway(
+  ordered: ProgramRoom[],
+  primary: ProgramRoom,
+  ensuite: ProgramRoom | undefined,
+  width: number,
+  publicDepth: number,
+  privateDepth: number,
+): PrivateZoneResult {
+  // `ordered` is [primary, ensuite?, secondaryBedrooms..., sharedBaths...]; reversed
+  // puts primary last — the far/quiet end of the column — without recomputing the
+  // grouping the caller already did.
+  const columnOrder = [...ordered].reverse();
+
+  const columnWidth = width - HALLWAY_WIDTH;
+  const columnItems: AllocItem[] = columnOrder.map((p) => ({
+    id: p.id,
+    ideal: columnWidth > 0 ? p.idealArea / columnWidth : p.idealArea,
+    // `minWidth` is literally "minimum width" for this room type (program.ts), reused
+    // here as the minimum *depth* along the corridor — an approximation (a room's
+    // minimum usable width and minimum usable depth are close enough for this
+    // heuristic engine), the same honesty level as every other min/ideal shortcut
+    // already in this file.
+    min: p.minWidth,
+  }));
+  const column = layoutColumn(columnItems, HALLWAY_WIDTH, publicDepth, privateDepth, columnWidth);
+
+  const transposed = transposeRects(column.rects);
+  const split = splitSliverRooms(columnOrder, transposed, columnWidth, "front");
+  const rects = transposeRects(split.rects);
+
+  const adjacency: Array<{ a: string; b: string }> = [];
+  for (const item of columnOrder) {
+    if (ensuite && item.id === ensuite.id) continue; // the ensuite connects to its bedroom, not the hallway
+    adjacency.push({ a: item.id, b: "hallway" });
+  }
+  if (ensuite) adjacency.push({ a: primary.id, b: ensuite.id });
+  adjacency.push(...split.extraAdjacency);
+
+  return {
+    rects,
+    adjacency,
+    hallwayRect: { x: 0, y: publicDepth, w: HALLWAY_WIDTH, h: privateDepth },
+    feasible: column.feasible,
+    extraRooms: split.extraRooms,
+  };
+}
+
+function transposeRect(r: Rect): Rect {
+  return { x: r.y, y: r.x, w: r.h, h: r.w };
+}
+
+function transposeRects(rects: Map<string, Rect>): Map<string, Rect> {
+  const out = new Map<string, Rect>();
+  for (const [id, r] of rects) out.set(id, transposeRect(r));
+  return out;
 }
 
 interface SliverSplitResult {

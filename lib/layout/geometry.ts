@@ -91,6 +91,25 @@ export function layoutRow(
   return { rects, feasible };
 }
 
+/** Lays `items` stacked top-to-bottom starting at `originY`, each spanning the same `width` — the column-axis counterpart to `layoutRow`, used by the side-hallway private-zone topology (a single-loaded corridor stacks rooms front-to-back instead of side by side). */
+export function layoutColumn(
+  items: AllocItem[],
+  x: number,
+  originY: number,
+  totalDepth: number,
+  width: number,
+): { rects: Map<string, Rect>; feasible: boolean } {
+  const { lengths, feasible } = allocateLengths(totalDepth, items);
+  const rects = new Map<string, Rect>();
+  let cursor = originY;
+  for (const it of items) {
+    const h = lengths.get(it.id) ?? 0;
+    rects.set(it.id, { x, y: cursor, w: width, h });
+    cursor += h;
+  }
+  return { rects, feasible };
+}
+
 /** Length of the overlap between two rectangles' shared edge, or 0 if they don't share one. */
 export function sharedEdgeOverlap(a: Rect, b: Rect): { x: number; y: number; length: number; orientation: "h" | "v" } | null {
   const EPS = 0.01;
