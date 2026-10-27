@@ -290,7 +290,7 @@ p {
 
 .hero-product-card {
   width: 100%;
-  max-width: 720px;
+  max-width: 1040px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -333,7 +333,7 @@ p {
   border-radius: var(--radius-md);
   overflow: hidden;
   background: #f5f5f4;
-  padding: 0 28px 28px 0;
+  padding: 12px;
 }
 
 .hero-product-image {
@@ -341,9 +341,8 @@ p {
   width: 100%;
   height: auto;
   border-radius: var(--radius-md);
-  object-fit: cover;
-  object-position: center 30%;
-  aspect-ratio: 998 / 460;
+  object-fit: contain;
+  object-position: center center;
 }
 
 .dim-line {
@@ -353,7 +352,7 @@ p {
 
 .dim-line-bottom {
   left: var(--space-200);
-  right: 28px;
+  right: 14px;
   bottom: 8px;
   height: 1px;
   background: var(--color-ink-faint);
@@ -388,7 +387,7 @@ p {
 
 .dim-line-right {
   top: var(--space-100);
-  bottom: 28px;
+  bottom: 14px;
   right: 8px;
   width: 1px;
   background: var(--color-ink-faint);
@@ -440,7 +439,7 @@ p {
 
 @media (max-width: 640px) {
   .hero-product-image-wrap {
-    padding: 0 18px 18px 0;
+    padding: 8px;
   }
 }
 
