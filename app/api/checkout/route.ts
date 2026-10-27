@@ -37,7 +37,7 @@ export async function POST(request: Request): Promise<Response> {
     const origin = absoluteOrigin(request);
     const session = await createProCheckout(env, {
       email,
-      returnUrl: `${origin}/pro/success`,
+      returnUrl: `${origin}/pro/success?email=${encodeURIComponent(email)}`,
     });
     return Response.json({ checkoutUrl: session.checkoutUrl });
   } catch (error) {

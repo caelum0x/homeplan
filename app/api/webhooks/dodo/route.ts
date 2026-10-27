@@ -1,13 +1,34 @@
 import { loadDodoEnv, verifyDodoWebhookSignature } from "@/lib/dodo";
+import { upsertProSubscriber } from "@/lib/entitlements";
 
 /**
- * HomePlan has no database/accounts (self-host-first app), so this webhook does the honest
- * minimum: verify the signature for real (never trust an unverified body), then log the
- * event server-side so the owner sees every real Pro signup/cancellation in Vercel's function
- * logs. No fake entitlement system is pretended here — access for the hosted Pro tier is
- * granted manually by the owner today (noted in plans/homeplan.md), same as any other
- * pre-automation SaaS billing bootstrap.
+ * Verifies the real Dodo webhook signature, then — for subscription.* events —
+ * writes the real entitlement into Postgres so /api/pro/claim can self-serve
+ * access instead of the owner reading logs and emailing the customer by hand.
  */
+
+type SubscriptionData = {
+  subscription_id: string;
+  status: string;
+  customer?: { email?: string | null };
+};
+
+function parseSubscriptionData(data: unknown): SubscriptionData | null {
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  const subscriptionId = record.subscription_id;
+  const status = record.status;
+  if (typeof subscriptionId !== "string" || !/^[A-Za-z0-9_-]{4,160}$/.test(subscriptionId)) return null;
+  if (typeof status !== "string" || status.length === 0 || status.length > 40) return null;
+  const customer = record.customer;
+  let email: string | null = null;
+  if (customer && typeof customer === "object") {
+    const rawEmail = (customer as Record<string, unknown>).email;
+    if (typeof rawEmail === "string" && rawEmail.length > 0 && rawEmail.length <= 320) email = rawEmail;
+  }
+  return { subscription_id: subscriptionId, status, customer: { email } };
+}
+
 export async function POST(request: Request): Promise<Response> {
   const env = loadDodoEnv();
   if (!env) return new Response("Webhook not configured", { status: 503 });
@@ -36,13 +57,23 @@ export async function POST(request: Request): Promise<Response> {
 
   const type = (event as { type?: unknown }).type;
   const data = (event as { data?: unknown }).data;
-  const customerEmail =
-    data && typeof data === "object" && "customer" in data && data.customer && typeof data.customer === "object"
-      ? (data.customer as { email?: unknown }).email
-      : undefined;
 
-  // Real signal the owner acts on: a verified payment/subscription event for HomePlan Pro.
-  console.log("HomePlan Pro billing event:", { type, customerEmail, eventId: id });
+  if (typeof type === "string" && type.startsWith("subscription.")) {
+    const subscription = parseSubscriptionData(data);
+    if (subscription?.customer?.email) {
+      await upsertProSubscriber(subscription.customer.email, subscription.subscription_id, subscription.status);
+      console.log("HomePlan Pro entitlement updated:", {
+        type,
+        email: subscription.customer.email,
+        status: subscription.status,
+        eventId: id,
+      });
+    } else {
+      console.error("HomePlan Dodo webhook: subscription event missing email/fields", { type, eventId: id });
+    }
+  } else {
+    console.log("HomePlan Pro billing event (non-subscription):", { type, eventId: id });
+  }
 
   return Response.json({ received: true });
 }
