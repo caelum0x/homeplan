@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { FloorPlan, FurnitureItem, Room } from "@/lib/layout/types";
+import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
+import type { Door, FloorPlan, FurnitureItem, Room, Wall, Window as PlanWindow } from "@/lib/layout/types";
 import { FURNITURE_CATALOG, type FurnitureSpec } from "@/lib/layout/furniture";
 import { ROOM_FILL } from "@/lib/renderSvg";
 
@@ -37,6 +38,117 @@ function hasWebGL(): boolean {
 
 const WALL_HEIGHT = 9; // feet
 const WALL_THICKNESS = 0.4; // feet, just for visual volume — not structural
+const WINDOW_SILL_HEIGHT = 2.5; // feet off the floor — standard residential sill height
+const WINDOW_PANE_HEIGHT = 4; // feet — sill (2.5') + pane (4') = 6.5' head height, under the 9' wall
+const DOOR_HEIGHT = 6 + 8 / 12; // 6'8" — standard residential interior door height
+/** How close (in feet) a door/window midpoint must sit to a wall's line and span to be
+ * treated as "on" that wall — generous enough to absorb float drift from the layout engine's
+ * own arithmetic, tight enough to never pick the wrong parallel wall in a tight floor plan. */
+const OPENING_WALL_TOLERANCE = 0.25;
+
+type Opening = { x: number; y: number; orientation: "h" | "v"; width: number; height: number; sill: number };
+
+function wallIsHorizontal(wall: Wall): boolean {
+  return Math.abs(wall.y2 - wall.y1) < Math.abs(wall.x2 - wall.x1);
+}
+
+/** Finds the wall segment an opening's midpoint actually sits on, by orientation + line +
+ * span — the same geometry `lib/layout/generate.ts` used to place the opening in the first
+ * place, so this only ever fails to match if the two disagree (defensive, not expected). */
+function findOwningWall(opening: Opening, walls: Wall[]): Wall | undefined {
+  let best: Wall | undefined;
+  let bestDist = Infinity;
+  for (const wall of walls) {
+    const horizontal = wallIsHorizontal(wall);
+    if ((opening.orientation === "h") !== horizontal) continue;
+    const lineCoord = horizontal ? wall.y1 : wall.x1;
+    const openingLineCoord = horizontal ? opening.y : opening.x;
+    const dist = Math.abs(lineCoord - openingLineCoord);
+    if (dist > OPENING_WALL_TOLERANCE) continue;
+    const spanCoord = horizontal ? opening.x : opening.y;
+    const [lo, hi] = horizontal ? [Math.min(wall.x1, wall.x2), Math.max(wall.x1, wall.x2)] : [Math.min(wall.y1, wall.y2), Math.max(wall.y1, wall.y2)];
+    if (spanCoord < lo - OPENING_WALL_TOLERANCE || spanCoord > hi + OPENING_WALL_TOLERANCE) continue;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = wall;
+    }
+  }
+  return best;
+}
+
+/**
+ * Builds each wall as a real solid CSG `Brush` (three-bvh-csg, the same boolean-geometry
+ * library Pascal/pascalorg's BIM editor depends on — adopted here directly rather than
+ * hand-rolled) and subtracts a brush per door/window opening that lands on it, so doors and
+ * windows cut an actual hole through the wall instead of the previous honest-but-flat
+ * simplification (a floor marker for doors, a glass pane floating in front of a solid box for
+ * windows, with no real gap in the wall geometry behind either).
+ */
+export function buildWallMeshes(walls: Wall[], doors: Door[], windows: PlanWindow[], wallHeightFactor: number): THREE.Mesh[] {
+  const evaluator = new Evaluator();
+  evaluator.useGroups = false;
+  const wallHeight = WALL_HEIGHT * wallHeightFactor;
+
+  const openingsByWall = new Map<Wall, Opening[]>();
+  for (const door of doors) {
+    const opening: Opening = { x: door.x, y: door.y, orientation: door.orientation, width: door.width, height: DOOR_HEIGHT, sill: 0 };
+    const wall = findOwningWall(opening, walls);
+    if (!wall) continue;
+    const list = openingsByWall.get(wall) ?? [];
+    list.push(opening);
+    openingsByWall.set(wall, list);
+  }
+  for (const win of windows) {
+    const opening: Opening = { x: win.x, y: win.y, orientation: win.orientation, width: win.width, height: WINDOW_PANE_HEIGHT, sill: WINDOW_SILL_HEIGHT };
+    const wall = findOwningWall(opening, walls);
+    if (!wall) continue;
+    const list = openingsByWall.get(wall) ?? [];
+    list.push(opening);
+    openingsByWall.set(wall, list);
+  }
+
+  const meshes: THREE.Mesh[] = [];
+  for (const wall of walls) {
+    const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (length < 0.1) continue;
+    const thickness = wall.exterior ? WALL_THICKNESS * 1.4 : WALL_THICKNESS;
+    const material = new THREE.MeshStandardMaterial({
+      color: wall.exterior ? WALL_COLOR_EXTERIOR : WALL_COLOR_INTERIOR,
+      roughness: 0.88,
+    });
+    const midX = (wall.x1 + wall.x2) / 2;
+    const midZ = (wall.y1 + wall.y2) / 2;
+    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+    const horizontal = wallIsHorizontal(wall);
+
+    let brush: Brush = new Brush(new THREE.BoxGeometry(length, wallHeight, thickness), material);
+    brush.position.set(midX, wallHeight / 2, midZ);
+    brush.rotation.y = -angle;
+    brush.updateMatrixWorld();
+
+    const openings = openingsByWall.get(wall) ?? [];
+    for (const opening of openings) {
+      // Cut straight through the wall's own axis (not just its nominal thickness) so the
+      // subtraction brush can never leave a sliver of un-cut geometry from rotation rounding.
+      const cutGeo = new THREE.BoxGeometry(
+        horizontal ? opening.width : thickness * 4,
+        opening.height,
+        horizontal ? thickness * 4 : opening.width,
+      );
+      const cutBrush = new Brush(cutGeo);
+      cutBrush.position.set(opening.x, opening.sill + opening.height / 2, opening.y);
+      cutBrush.updateMatrixWorld();
+      const result = evaluator.evaluate(brush, cutBrush, SUBTRACTION);
+      result.material = material;
+      brush = result;
+    }
+
+    brush.castShadow = true;
+    brush.receiveShadow = true;
+    meshes.push(brush);
+  }
+  return meshes;
+}
 
 /** Warm cream, matching the product's own `--color-bg`/`--color-surface-sunken` paper tones
  * (app/globals.css) — replaces the prior flat gray so walls read as a material, not a shell. */
@@ -379,40 +491,45 @@ export function FloorPlan3D({
       scene.add(floor);
     }
 
-    // Walls extruded from the plan's actual wall segments — thin boxes along each segment.
-    for (const wall of plan.walls) {
-      const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
-      if (length < 0.1) continue;
-      const thickness = wall.exterior ? WALL_THICKNESS * 1.4 : WALL_THICKNESS;
-      const wallHeight = WALL_HEIGHT * wallHeightFactor;
-      const geo = new THREE.BoxGeometry(length, wallHeight, thickness);
-      const mat = new THREE.MeshStandardMaterial({
-        color: wall.exterior ? WALL_COLOR_EXTERIOR : WALL_COLOR_INTERIOR,
-        roughness: 0.88,
-      });
-      const mesh = new THREE.Mesh(geo, mat);
-      const midX = (wall.x1 + wall.x2) / 2;
-      const midZ = (wall.y1 + wall.y2) / 2;
-      const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-      mesh.position.set(midX, wallHeight / 2, midZ);
-      mesh.rotation.y = -angle;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
+    // Walls built as real solid CSG brushes with actual door/window holes cut through them —
+    // see buildWallMeshes above (three-bvh-csg, not a hand-rolled boolean-geometry pass).
+    for (const mesh of buildWallMeshes(plan.walls, plan.doors, plan.windows ?? [], wallHeightFactor)) {
       scene.add(mesh);
     }
 
-    // Door openings: a short lighter "gap" marker on the floor so it's visible from above, and
-    // a literal vertical gap is NOT cut into the wall mesh above (a real honest simplification —
-    // this is a massing/walkthrough view, not a BIM-grade model with trimmed wall openings).
-    for (const door of plan.doors) {
-      const geo = new THREE.BoxGeometry(
-        door.orientation === "h" ? door.width : WALL_THICKNESS * 1.6,
-        0.15,
-        door.orientation === "h" ? WALL_THICKNESS * 1.6 : door.width,
+    // Windows: a real glass pane set inside the real cut opening built above, at window height —
+    // the thing that makes a window a window is that it's a pane of glass partway up a wall, sitting
+    // in an actual gap in the wall behind it (not floating in front of a solid box, as before this
+    // CSG pass). This was the one real gap left after the 2026-10-27 flagship-audit windows fix
+    // (`ed91f1e`) shipped windows to the SVG/Studio renderers but never to this 3D view or exports.
+    for (const win of plan.windows ?? []) {
+      const paneThickness = WALL_THICKNESS * 0.4;
+      const paneGeo = new THREE.BoxGeometry(
+        win.orientation === "h" ? win.width : paneThickness,
+        WINDOW_PANE_HEIGHT,
+        win.orientation === "h" ? paneThickness : win.width,
       );
-      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff }));
-      mesh.position.set(door.x, 0.08, door.y);
-      scene.add(mesh);
+      const paneMat = new THREE.MeshStandardMaterial({
+        color: 0x9fcfe8,
+        transparent: true,
+        opacity: 0.5,
+        roughness: 0.1,
+        metalness: 0.1,
+      });
+      const pane = new THREE.Mesh(paneGeo, paneMat);
+      pane.position.set(win.x, WINDOW_SILL_HEIGHT + WINDOW_PANE_HEIGHT / 2, win.y);
+      scene.add(pane);
+
+      // A thin white mullion bar across the pane's mid-height, matching the pale-blue-bar-plus-
+      // white-mullion-line window mark used by the SVG/Studio renderers (lib/renderSvg.ts).
+      const mullionGeo = new THREE.BoxGeometry(
+        win.orientation === "h" ? win.width : paneThickness * 1.3,
+        0.08,
+        win.orientation === "h" ? paneThickness * 1.3 : win.width,
+      );
+      const mullion = new THREE.Mesh(mullionGeo, new THREE.MeshStandardMaterial({ color: 0xffffff }));
+      mullion.position.set(win.x, WINDOW_SILL_HEIGHT + WINDOW_PANE_HEIGHT / 2, win.y);
+      scene.add(mullion);
     }
 
     // Furniture: a real composite silhouette per category (bed+headboard, sofa+back+arms,
