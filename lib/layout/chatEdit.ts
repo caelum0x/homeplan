@@ -144,6 +144,27 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
+/**
+ * Resolves a room-type word against ROOM_TYPE_WORDS by the LONGEST matching
+ * phrase, not array order. Real bug this fixes: with a plain first-match
+ * `.find()`, "living room" matched the generic `{words: ["bedroom","room"],
+ * type:"bedroom"}` entry first (since "living room".endsWith("room")), so
+ * "add a sofa to the living room" silently added it to the Primary Bedroom
+ * instead — caught live by actually running the new furniture commands
+ * against a real open-plan brief, not visible from reading the code alone.
+ */
+function matchRoomTypeWord(typeWord: string): RoomType | null {
+  let best: { word: string; type: RoomType } | null = null;
+  for (const entry of ROOM_TYPE_WORDS) {
+    for (const w of entry.words) {
+      if ((typeWord === w || typeWord.endsWith(w)) && (!best || w.length > best.word.length)) {
+        best = { word: w, type: entry.type };
+      }
+    }
+  }
+  return best?.type ?? null;
+}
+
 /** Finds the room a free-text reference ("the primary bedroom", "bedroom 2", "kitchen") points to. */
 function findRoom(plan: FloorPlan, ref: string): Room | null {
   const q = normalize(ref).replace(/^(the|a|an)\s+/, "");
@@ -159,15 +180,24 @@ function findRoom(plan: FloorPlan, ref: string): Room | null {
   const typeWord = ordinalMatch ? ordinalMatch[1].trim() : q;
   const ordinal = ordinalMatch ? parseInt(ordinalMatch[2], 10) : null;
 
-  const entry = ROOM_TYPE_WORDS.find((e) => e.words.some((w) => typeWord === w || typeWord.endsWith(w)));
-  if (!entry) return byLabelSubstring[0] ?? null;
+  const entryType = matchRoomTypeWord(typeWord);
+  if (!entryType) return byLabelSubstring[0] ?? null;
 
   const family =
-    entry.type === "bedroom"
+    entryType === "bedroom"
       ? plan.rooms.filter((r) => r.type === "bedroom" || r.type === "primary_bedroom")
-      : entry.type === "bath"
+      : entryType === "bath"
         ? plan.rooms.filter((r) => r.type === "bath" || r.type === "primary_bath" || r.type === "half_bath")
-        : plan.rooms.filter((r) => r.type === entry.type);
+        : plan.rooms.filter((r) => r.type === entryType);
+
+  // "the living room" when the brief merged living/kitchen/dining into one
+  // open-plan room: there's no room with type "living" at all, but the
+  // great room IS functionally the living room, so fall back to it instead
+  // of reporting "no room found" for a reference that's obviously valid.
+  if (family.length === 0 && entryType === "living") {
+    const greatRoom = plan.rooms.filter((r) => r.type === "great_room");
+    if (greatRoom.length > 0) return greatRoom[0];
+  }
 
   if (family.length === 0) return null;
   if (ordinal !== null) return family[ordinal - 1] ?? null;
@@ -394,8 +424,7 @@ export function applyChatCommand(plan: FloorPlan, rawCommand: string): ChatEditR
   if (addMatch) {
     const [, typeWordRaw, customLabel] = addMatch;
     const typeWord = typeWordRaw.trim();
-    const entry = ROOM_TYPE_WORDS.find((e) => e.words.some((w) => typeWord === w || typeWord.endsWith(w)));
-    const type: RoomType = entry?.type ?? "bedroom";
+    const type: RoomType = matchRoomTypeWord(typeWord) ?? "bedroom";
     const label = customLabel ? customLabel.trim().replace(/^./, (c) => c.toUpperCase()) : defaultLabelFor(type, plan);
     const nextPlan = addRoom(plan, type, label);
     return { ok: true, plan: nextPlan, message: `Added "${label}" (${nextPlan.rooms.length} rooms total) — drag it into place in the Studio view.` };
