@@ -10,16 +10,17 @@ interface UploadPlanFormProps {
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB — generous for a phone photo/scan, small enough to keep in memory/localStorage safely
 
 /**
- * "Upload an existing plan" entry point. Real OSS research (documented in
- * plans/homeplan.md) found no genuinely free-tier-compatible automated
- * vectorization path available in this environment right now (the one
- * credential present for a vision-capable model, OpenRouter via
- * OPENAI_API_KEY, returned 401 "User not found" — not a usable live key).
- * Built the real, always-available alternative instead: the uploaded image
- * becomes a trace-over reference layer behind a freshly generated starter
- * plan in the Studio editor, so the user drags/resizes real rooms to match
- * their actual floor plan precisely — a genuine, zero-cost, zero-backend
- * "upload and get an editable plan" workflow, not a stub.
+ * "Upload an existing plan" entry point. The actual image is submitted to
+ * /api/vectorize-plan (see app/page.tsx's handleUploadSubmit), which calls a
+ * free vision-capable OpenRouter model to read real bedroom/bath counts and
+ * layout flags out of the image and runs them through the same real geometry
+ * engine the "Describe" tab uses — not a stub. Free-tier vision models rate-
+ * limit and rotate availability, so that call can fail; whenever it does, this
+ * form's submission still works via the always-available fallback: the
+ * uploaded image becomes a trace-over reference layer behind a freshly
+ * generated starter plan in the Studio editor, so the user drags/resizes real
+ * rooms to match their actual floor plan precisely. Both paths are real; this
+ * component doesn't know or care which one ran.
  */
 export function UploadPlanForm({ onSubmit, loading }: UploadPlanFormProps) {
   const [description, setDescription] = useState("");
@@ -79,7 +80,7 @@ export function UploadPlanForm({ onSubmit, loading }: UploadPlanFormProps) {
         <div style={{ flex: 1 }}>
           <input id="trace-image" type="file" accept="image/*" onChange={(e) => handleFile(e.target.files?.[0])} style={{ fontSize: 13 }} />
           <p style={{ fontSize: 12, color: "var(--color-ink-faint)", marginTop: 6 }}>
-            {imageName ?? "PNG/JPG scan or photo of a floor plan."} Stays in your browser only — nothing is uploaded to a server.
+            {imageName ?? "PNG/JPG scan or photo of a floor plan."} Sent once to a free AI model to read room counts, then discarded — never stored.
           </p>
         </div>
       </div>

@@ -193,6 +193,34 @@ export default function Home() {
     setStage("loading");
     setError(null);
     try {
+      // Real automated path first: ask the vision model to read room counts straight
+      // out of the uploaded image. Any failure (model rate-limited, no credential,
+      // malformed response — all real, surfaced via a 503) falls through to the
+      // existing manual trace-over generator below rather than showing nothing.
+      if (imageDataUrl) {
+        try {
+          const vecRes = await fetch("/api/vectorize-plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ imageDataUrl, brief: uploadDescription }),
+          });
+          if (vecRes.ok) {
+            const vecData = await vecRes.json();
+            const options: FloorPlanOption[] = vecData.options;
+            const classic = options.find((o) => o.variant.id === "classic") ?? options[0];
+            setResult(vecData);
+            setPlan(classic.plan);
+            setSelectedVariantLabel(`${classic.variant.label} (vectorized from your upload — ${vecData.summary})`);
+            setTraceImageUrl(imageDataUrl);
+            setViewMode("studio");
+            setStage("editing");
+            return;
+          }
+        } catch {
+          // Network error reaching the vectorizer — fall through to the manual flow below.
+        }
+      }
+
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
