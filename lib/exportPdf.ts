@@ -4,7 +4,9 @@
 // coordinates, so dimensions stay crisp and selectable at any zoom level.
 
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
-import type { FloorPlan, Room } from "./layout/types";
+import type { FloorPlan, FurnitureItem, Room } from "./layout/types";
+import { FURNITURE_CATALOG } from "./layout/furniture";
+import { furnitureFootprintCorners, furnitureIconMarks } from "./furnitureTransform";
 
 const MARGIN = 36; // points
 const PAGE_W = 792; // US Letter, landscape
@@ -109,10 +111,89 @@ export async function floorPlanToPdf(plan: FloorPlan): Promise<Uint8Array> {
     }
   }
 
+  // Furniture draws last, on top of rooms/walls/doors — same stacking order
+  // lib/renderSvg.ts uses so the PDF matches the on-screen plan.
+  for (const item of plan.furniture ?? []) {
+    drawFurniture(page, item, px, py, toPt, font);
+  }
+
   return doc.save();
 }
 
 function drawCenteredText(page: PDFPage, text: string, cx: number, y: number, font: PDFFont, size: number) {
   const width = font.widthOfTextAtSize(text, size);
   page.drawText(text, { x: cx - width / 2, y, size, font, color: rgb(0.2, 0.2, 0.2) });
+}
+
+function hexToRgb01(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+const FURNITURE_STROKE = rgb(0.35, 0.35, 0.35);
+
+/**
+ * Draws one furniture item's real (rotated) footprint + icon-detail marks as
+ * real vector shapes — not a placeholder box. The footprint rect is a real
+ * oriented rectangle: for the 0/90/180/270deg rotations this app's own Studio
+ * editor ever produces (rotateFurniture only ever rotates by a 90deg step),
+ * the 4 rotated plan-space corners ARE axis-aligned in page space too, so the
+ * bounding box used for the fill is exact, not an approximation; for any
+ * other angle the fill degrades gracefully to a bounding-box tint while the
+ * outline/detail lines (computed from the exact rotated corners) stay correct.
+ */
+function drawFurniture(
+  page: PDFPage,
+  item: FurnitureItem,
+  px: (x: number) => number,
+  py: (y: number) => number,
+  toPt: (ft: number) => number,
+  font: PDFFont,
+) {
+  const toPage = (p: { x: number; y: number }) => ({ x: px(p.x), y: py(p.y) });
+  const corners = furnitureFootprintCorners(item).map(toPage);
+  const xs = corners.map((c) => c.x);
+  const ys = corners.map((c) => c.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const [r, g, b] = hexToRgb01(FURNITURE_CATALOG[item.type].color);
+
+  page.drawRectangle({
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+    color: rgb(r, g, b),
+    opacity: item.type === "rug" ? 0.3 : 0.55,
+  });
+
+  for (let i = 0; i < corners.length; i++) {
+    page.drawLine({ start: corners[i], end: corners[(i + 1) % corners.length], thickness: 0.5, color: FURNITURE_STROKE });
+  }
+
+  for (const mark of furnitureIconMarks(item)) {
+    if (mark.kind === "line") {
+      page.drawLine({ start: toPage(mark.a), end: toPage(mark.b), thickness: 0.4, color: FURNITURE_STROKE });
+    } else if (mark.kind === "circle") {
+      const center = toPage(mark.center);
+      page.drawEllipse({
+        x: center.x,
+        y: center.y,
+        xScale: toPt(mark.radiusFt),
+        yScale: toPt(mark.radiusFt),
+        borderColor: FURNITURE_STROKE,
+        borderWidth: 0.4,
+      });
+    } else {
+      const pts = mark.corners.map(toPage);
+      for (let i = 0; i < pts.length; i++) {
+        page.drawLine({ start: pts[i], end: pts[(i + 1) % pts.length], thickness: 0.4, color: FURNITURE_STROKE });
+      }
+    }
+  }
+
+  const size = Math.max(4.5, Math.min(6, (maxX - minX) / 6));
+  drawCenteredText(page, item.label, (minX + maxX) / 2, (minY + maxY) / 2 - size / 2, font, size);
 }
