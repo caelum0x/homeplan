@@ -112,6 +112,24 @@ export async function floorPlanToPdf(plan: FloorPlan): Promise<Uint8Array> {
     }
   }
 
+  // Windows: same pale-blue-bar-plus-white-mullion mark as the SVG/Studio renderers
+  // (lib/renderSvg.ts's windowToSvg), drawn as two overlapping real vector lines rather than a
+  // plain door-colored gap, so a window reads as a window on the printed/exported page too. The
+  // one real gap left after the 2026-10-27 flagship-audit windows fix (`ed91f1e`) shipped windows
+  // to the SVG/Studio renderers but never to this export.
+  for (const win of plan.windows ?? []) {
+    const cx = px(win.x);
+    const cy = py(win.y);
+    const half = toPt(win.width) / 2;
+    if (win.orientation === "h") {
+      page.drawLine({ start: { x: cx - half, y: cy }, end: { x: cx + half, y: cy }, thickness: 3.2, color: rgb(0.5, 0.7, 0.85) });
+      page.drawLine({ start: { x: cx - half, y: cy }, end: { x: cx + half, y: cy }, thickness: 1, color: rgb(1, 1, 1) });
+    } else {
+      page.drawLine({ start: { x: cx, y: cy - half }, end: { x: cx, y: cy + half }, thickness: 3.2, color: rgb(0.5, 0.7, 0.85) });
+      page.drawLine({ start: { x: cx, y: cy - half }, end: { x: cx, y: cy + half }, thickness: 1, color: rgb(1, 1, 1) });
+    }
+  }
+
   // Furniture draws last, on top of rooms/walls/doors — same stacking order
   // lib/renderSvg.ts uses so the PDF matches the on-screen plan.
   for (const item of plan.furniture ?? []) {

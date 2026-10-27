@@ -19,6 +19,7 @@ export function floorPlanToDxf(plan: FloorPlan): string {
   dxf.addLayer("ROOMS", 7, "Continuous");
   dxf.addLayer("WALLS", 0, "Continuous"); // 0 = black/white, renders as the current color
   dxf.addLayer("DOORS", 1, "Continuous"); // 1 = red, so openings are visually distinct from walls
+  dxf.addLayer("WINDOWS", 5, "Continuous"); // 5 = blue, distinct from both walls and doors
   dxf.addLayer("TEXT", 3, "Continuous"); // 3 = green
   dxf.addLayer("FURNITURE", 6, "Continuous"); // 6 = magenta, its own layer so a CAD user can toggle it independently
 
@@ -53,6 +54,19 @@ export function floorPlanToDxf(plan: FloorPlan): string {
       dxf.addLine(point3d(door.x - half, flip(door.y), 0), point3d(door.x + half, flip(door.y), 0));
     } else {
       dxf.addLine(point3d(door.x, flip(door.y - half), 0), point3d(door.x, flip(door.y + half), 0));
+    }
+  }
+
+  // Windows: real LINE entities on their own layer, distinct from DOORS, so a CAD user can toggle
+  // or style them independently. The one real gap left after the 2026-10-27 flagship-audit windows
+  // fix (`ed91f1e`) shipped windows to the SVG/Studio renderers but never to this export.
+  dxf.setCurrentLayerName("WINDOWS");
+  for (const win of plan.windows ?? []) {
+    const half = win.width / 2;
+    if (win.orientation === "h") {
+      dxf.addLine(point3d(win.x - half, flip(win.y), 0), point3d(win.x + half, flip(win.y), 0));
+    } else {
+      dxf.addLine(point3d(win.x, flip(win.y - half), 0), point3d(win.x, flip(win.y + half), 0));
     }
   }
 
