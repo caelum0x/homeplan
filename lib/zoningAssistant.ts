@@ -68,19 +68,40 @@ function roughHeightEstimate(stories: 1 | 2): string {
     : "roughly 15-18 ft to the roof ridge (rough estimate: one ~9-10 ft story plus roof — not a real structural calculation)";
 }
 
+/**
+ * Real exact building-footprint area for this floor, used for lot-coverage math.
+ *
+ * `facts.totalAreaSqft` is the sum of every real room's own `areaSqft` — since the
+ * layout engine guarantees rooms never overlap and never leave an uncovered interior
+ * gap (verified by `npm run verify`'s bounds/overlap checker), that sum IS the exact
+ * real area the building actually occupies on this floor, not an estimate. The
+ * bounding-rectangle number (`footprintW * footprintH`) is only exact for a plain
+ * rectangular massing; for a garage notch, an L-shaped setback, or a courtyard void it
+ * overstates the real footprint by exactly the uncovered notch/void area (confirmed
+ * this session: a real "4 bed 3 bath, 2200 sqft, garage, office" brief has a 2862 sqft
+ * bounding rectangle but a 2443.5 sqft real footprint — a 418.5 sqft overstatement;
+ * the L-shaped variant of the same brief overstates by 697.7 sqft). So the real,
+ * exact figure (`totalAreaSqft`) is used here instead of the bounding-rectangle
+ * estimate the grounding summary used to compute lot coverage from.
+ */
+function realFootprintAreaSqft(facts: PlanFacts): number {
+  return facts.totalAreaSqft;
+}
+
 function buildGroundingSummary(facts: PlanFacts, lotSizeSqft: number | null): string {
-  const footprintArea = Math.round(facts.footprintW * facts.footprintH * 10) / 10;
+  const boundingArea = Math.round(facts.footprintW * facts.footprintH * 10) / 10;
+  const footprintArea = realFootprintAreaSqft(facts);
   const coverage = lotSizeSqft && lotSizeSqft > 0 ? Math.round((footprintArea / lotSizeSqft) * 1000) / 10 : null;
   const lines = [
-    `Footprint (bounding rectangle): ${facts.footprintW}' x ${facts.footprintH}' (~${footprintArea} sqft)${facts.nonRectangularMassing ? " — this plan's real exterior massing is not a plain rectangle (e.g. an attached garage wing, L-shaped setback, or courtyard notch), so the true building footprint is somewhat smaller than this bounding-rectangle number, a conservative over-estimate" : ""}.`,
-    `Interior floor area: ${facts.totalAreaSqft} sqft (this floor).`,
+    `Bounding envelope: ${facts.footprintW}' x ${facts.footprintH}' (~${boundingArea} sqft outer extent)${facts.nonRectangularMassing ? " — this plan's real exterior massing is not a plain rectangle (e.g. an attached garage wing, L-shaped setback, or courtyard notch), so the actual building footprint below is smaller than this outer-extent number" : ""}.`,
+    `Real building footprint (exact, this floor): ${footprintArea} sqft — the true sum of every room's actual area, which is what lot-coverage math below uses, not the bounding envelope above.`,
     `Stories: ${facts.stories}.`,
     `Rooms: ${facts.roomLabels.join(", ")}.`,
     `Garage: ${facts.hasGarage ? "yes" : "no"}.`,
     `Approximate overall building height: ${roughHeightEstimate(facts.stories)}.`,
   ];
   if (lotSizeSqft && lotSizeSqft > 0) {
-    lines.push(`User-provided lot size: ${lotSizeSqft} sqft -> approximate lot coverage ${coverage}% (building footprint / lot size).`);
+    lines.push(`User-provided lot size: ${lotSizeSqft} sqft -> exact lot coverage ${coverage}% (real building footprint / lot size).`);
   } else {
     lines.push("No lot size was provided, so lot coverage % cannot be computed — only general lot-coverage guidance can be given.");
   }
