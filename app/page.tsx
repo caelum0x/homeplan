@@ -5,6 +5,7 @@ import { FloorPlanSvg } from "@/components/FloorPlanSvg";
 import { FloorPlanStudio } from "@/components/FloorPlanStudio";
 import { FloorPlan3D } from "@/components/FloorPlan3D";
 import { AiRenderPanel } from "@/components/AiRenderPanel";
+import { ZoningPanel } from "@/components/ZoningPanel";
 import { PricingCta } from "@/components/PricingCta";
 import { VariantPicker } from "@/components/VariantPicker";
 import { ChatEditPanel } from "@/components/ChatEditPanel";
@@ -32,7 +33,7 @@ interface GenerateResponse {
   options: FloorPlanOption[];
 }
 
-type ViewMode = "plan" | "studio" | "3d" | "render";
+type ViewMode = "plan" | "studio" | "3d" | "render" | "zoning";
 type Stage = "idle" | "loading" | "variants" | "editing";
 type EntryMode = "describe" | "templates" | "upload";
 
@@ -529,14 +530,22 @@ export default function Home() {
 
             <div className="toolbar">
               <div className="segmented">
-                {(["plan", "studio", "3d", "render"] as ViewMode[]).map((mode) => (
+                {(["plan", "studio", "3d", "render", "zoning"] as ViewMode[]).map((mode) => (
                   <button
                     key={mode}
                     type="button"
                     onClick={() => setViewMode(mode)}
                     className={`segmented-btn ${viewMode === mode ? "active" : ""}`}
                   >
-                    {mode === "plan" ? "View" : mode === "studio" ? "Edit (Studio)" : mode === "3d" ? "3D view" : "Style Moodboard"}
+                    {mode === "plan"
+                      ? "View"
+                      : mode === "studio"
+                        ? "Edit (Studio)"
+                        : mode === "3d"
+                          ? "3D view"
+                          : mode === "render"
+                            ? "Style Moodboard"
+                            : "Zoning Assistant"}
                   </button>
                 ))}
               </div>
@@ -591,6 +600,7 @@ export default function Home() {
               {viewMode === "studio" && <FloorPlanStudio key={`studio-${activeFloor}`} plan={plan} onChange={updatePlan} traceImageUrl={traceImageUrl} />}
               {viewMode === "3d" && <FloorPlan3D plan={plan} />}
               {viewMode === "render" && <AiRenderPanel plan={plan} />}
+              {viewMode === "zoning" && <ZoningPanel plan={plan} stories={floors ? (floors.length as 1 | 2) : 1} />}
             </div>
 
             <div style={{ marginTop: 18 }}>
