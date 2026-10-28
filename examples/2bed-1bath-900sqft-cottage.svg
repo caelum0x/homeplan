@@ -67,10 +67,18 @@
 <text x="17.5" y="193" text-anchor="middle" font-size="9" font-weight="600" fill="#2b2b2b">Hallway</text>
 <text x="17.5" y="204" text-anchor="middle" font-size="7" fill="#5a5a5a">3.5' x 16.0' (56 sqft)</text>
 </g>
+<line x1="265" y1="0" x2="265" y2="70" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="0" y1="0" x2="0" y2="70" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
 <line x1="0" y1="0" x2="265" y2="0" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
-<line x1="0" y1="340" x2="265" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
-<line x1="0" y1="0" x2="0" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
-<line x1="265" y1="0" x2="265" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="0" y1="70" x2="0" y2="180" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="265" y1="70" x2="265" y2="180" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="35" y1="340" x2="190" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="265" y1="180" x2="265" y2="213.33333333333331" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="265" y1="213.33333333333331" x2="265" y2="273.3333333333333" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="265" y1="273.3333333333333" x2="265" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="190" y1="340" x2="265" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="0" y1="180" x2="0" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="0" y1="340" x2="35" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
 <line x1="0" y1="70" x2="104.83333333333334" y2="70" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
 <line x1="104.83333333333334" y1="70" x2="185" y2="70" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
 <line x1="185" y1="70" x2="265" y2="70" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
@@ -109,16 +117,38 @@
 <line x1="131.6" y1="340" x2="161.6" y2="340" stroke="#7fb3d9" stroke-width="5" />
 <line x1="131.6" y1="340" x2="161.6" y2="340" stroke="#ffffff" stroke-width="1.5" />
 <line x1="104.83333333333334" y1="110" x2="104.83333333333334" y2="140" stroke="#ffffff" stroke-width="4" />
+<polyline points="104.8,140.0 100.9,139.7 97.1,139.0 93.4,137.7 89.8,136.0 86.6,133.8 83.6,131.2 81.0,128.3 78.9,125.0 77.1,121.5 75.9,117.8 75.1,113.9 74.8,110.0" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="104.83333333333334" y1="110" x2="74.83333333333334" y2="110" stroke="#8a8578" stroke-width="1.5" />
 <line x1="185" y1="110" x2="185" y2="140" stroke="#ffffff" stroke-width="4" />
+<polyline points="185.0,140.0 181.1,139.7 177.2,139.0 173.5,137.7 170.0,136.0 166.7,133.8 163.8,131.2 161.2,128.3 159.0,125.0 157.3,121.5 156.0,117.8 155.3,113.9 155.0,110.0" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="185" y1="110" x2="155" y2="110" stroke="#8a8578" stroke-width="1.5" />
 <line x1="37.41666666666667" y1="70" x2="67.41666666666667" y2="70" stroke="#ffffff" stroke-width="4" />
+<polyline points="67.4,70.0 67.2,66.1 66.4,62.2 65.1,58.5 63.4,55.0 61.2,51.7 58.6,48.8 55.7,46.2 52.4,44.0 48.9,42.3 45.2,41.0 41.3,40.3 37.4,40.0" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="37.41666666666667" y1="70" x2="37.41666666666667" y2="40" stroke="#8a8578" stroke-width="1.5" />
 <line x1="35" y1="183.3333333333333" x2="35" y2="209.99999999999997" stroke="#ffffff" stroke-width="4" />
+<polyline points="35.0,210.0 31.5,209.8 28.1,209.1 24.8,208.0 21.7,206.4 18.8,204.5 16.1,202.2 13.8,199.6 11.9,196.7 10.4,193.5 9.2,190.2 8.6,186.8 8.3,183.3" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="35" y1="183.33333333333331" x2="8.33333333333334" y2="183.33333333333331" stroke="#8a8578" stroke-width="1.5" />
 <line x1="35" y1="228.33333333333331" x2="35" y2="258.3333333333333" stroke="#ffffff" stroke-width="4" />
+<polyline points="35.0,258.3 31.1,258.1 27.2,257.3 23.5,256.0 20.0,254.3 16.7,252.1 13.8,249.5 11.2,246.6 9.0,243.3 7.3,239.8 6.0,236.1 5.3,232.2 5.0,228.3" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="35" y1="228.33333333333331" x2="5" y2="228.33333333333331" stroke="#8a8578" stroke-width="1.5" />
 <line x1="35" y1="291.66666666666663" x2="35" y2="321.66666666666663" stroke="#ffffff" stroke-width="4" />
+<polyline points="35.0,321.7 31.1,321.4 27.2,320.6 23.5,319.4 20.0,317.6 16.7,315.5 13.8,312.9 11.2,309.9 9.0,306.7 7.3,303.1 6.0,299.4 5.3,295.6 5.0,291.7" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="35" y1="291.66666666666663" x2="5" y2="291.66666666666663" stroke="#8a8578" stroke-width="1.5" />
 <line x1="110" y1="183.3333333333333" x2="110" y2="209.99999999999997" stroke="#ffffff" stroke-width="4" />
+<polyline points="110.0,210.0 113.5,209.8 116.9,209.1 120.2,208.0 123.3,206.4 126.2,204.5 128.9,202.2 131.2,199.6 133.1,196.7 134.6,193.5 135.8,190.2 136.4,186.8 136.7,183.3" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="110" y1="183.33333333333331" x2="136.66666666666666" y2="183.33333333333331" stroke="#8a8578" stroke-width="1.5" />
 <line x1="160" y1="228.33333333333331" x2="160" y2="258.3333333333333" stroke="#ffffff" stroke-width="4" />
+<polyline points="160.0,258.3 156.1,258.1 152.2,257.3 148.5,256.0 145.0,254.3 141.7,252.1 138.8,249.5 136.2,246.6 134.0,243.3 132.3,239.8 131.0,236.1 130.3,232.2 130.0,228.3" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="160" y1="228.33333333333331" x2="130" y2="228.33333333333331" stroke="#8a8578" stroke-width="1.5" />
 <line x1="190" y1="291.66666666666663" x2="190" y2="321.66666666666663" stroke="#ffffff" stroke-width="4" />
+<polyline points="190.0,321.7 186.1,321.4 182.2,320.6 178.5,319.4 175.0,317.6 171.7,315.5 168.8,312.9 166.2,309.9 164.0,306.7 162.3,303.1 161.0,299.4 160.3,295.6 160.0,291.7" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="190" y1="291.66666666666663" x2="160" y2="291.66666666666663" stroke="#8a8578" stroke-width="1.5" />
 <line x1="3.4999999999999982" y1="180" x2="31.5" y2="180" stroke="#ffffff" stroke-width="4" />
+<polyline points="31.5,180.0 31.3,183.7 30.5,187.2 29.4,190.7 27.7,194.0 25.7,197.0 23.3,199.8 20.5,202.2 17.5,204.2 14.2,205.9 10.7,207.0 7.2,207.8 3.5,208.0" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="3.4999999999999987" y1="180" x2="3.4999999999999987" y2="208" stroke="#8a8578" stroke-width="1.5" />
 <line x1="117.5" y1="0" x2="147.5" y2="0" stroke="#ffffff" stroke-width="4" />
+<polyline points="147.5,0.0 147.2,3.9 146.5,7.8 145.2,11.5 143.5,15.0 141.3,18.3 138.7,21.2 135.8,23.8 132.5,26.0 129.0,27.7 125.3,29.0 121.4,29.7 117.5,30.0" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="117.5" y1="0" x2="117.5" y2="30" stroke="#8a8578" stroke-width="1.5" />
 <g transform="translate(4, 103) rotate(0, 35, 15)">
 <rect x="0" y="0" width="70" height="30" fill="#a9b9ce" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
 <rect x="0" y="0" width="70" height="6.6" fill="none" stroke="#5a5a5a" stroke-width="1" rx="0" />

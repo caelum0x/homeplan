@@ -157,4 +157,13 @@ export interface BriefInput {
    * aligned stair.
    */
   stories?: 1 | 2;
+  /**
+   * Real L-shaped massing (lib/layout/generate.ts's L_SHAPE_SETBACK_* constants): the
+   * private (bedroom) zone is laid out narrower than the public zone above it, stepped in
+   * on one side — a genuine non-rectangular footprint, not a cosmetic relabeling. Undefined
+   * or false = the original rectangular footprint, unchanged. v1 scope: single-story only
+   * (ignored by lib/layout/multiStory.ts) and mutually exclusive with the courtyard
+   * topology (see pickPrivateTopology).
+   */
+  lShaped?: boolean;
 }

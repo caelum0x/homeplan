@@ -116,8 +116,8 @@ export function generateMultiStoryPlan(input: BriefInput, aspectRatio?: number):
   const groundWarnings = [...ground.warnings];
   const upperWarnings = [...upper.warnings];
 
-  const groundBuilt = buildWallsAndDoors(groundRooms, { width, depth }, groundAdjacency);
-  const upperBuilt = buildWallsAndDoors(upperRooms, { width, depth }, upper.adjacency);
+  const groundBuilt = buildWallsAndDoors(groundRooms, groundAdjacency);
+  const upperBuilt = buildWallsAndDoors(upperRooms, upper.adjacency);
 
   if (stair) {
     groundBuilt.doors.push(stairDoor("door_stairs", stair.ground, STAIRS_ID));

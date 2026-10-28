@@ -52,9 +52,11 @@ export function parseDescription(raw: string): BriefInput {
   // Only set when the brief actually says so — an omitted field keeps the original
   // single-story engine (and this function's exact previous output) for every other brief.
   const stories = parseStories(text);
+  const lShaped = /\bl[- ]?shaped?\b|\bl[- ]?wing\b|\bl[- ]?shaped?\s+(?:footprint|floor\s?plan|house|home)\b/.test(text);
 
   return {
     ...(stories ? { stories } : {}),
+    ...(lShaped ? { lShaped } : {}),
     bedrooms: clamp(Math.round(bedrooms), 1, 8),
     bathrooms: clamp(roundHalf(bathrooms), 1, 6),
     sqft: clamp(Math.round(sqft), 400, 12000),

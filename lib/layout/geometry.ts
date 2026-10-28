@@ -110,6 +110,108 @@ export function layoutColumn(
   return { rects, feasible };
 }
 
+export interface Segment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+const EXTERIOR_EPS = 0.01;
+
+/** Merges overlapping/touching [a,b] intervals into the minimal sorted set that covers the same total range. */
+function mergeIntervals(intervals: Array<[number, number]>): Array<[number, number]> {
+  if (intervals.length === 0) return [];
+  const sorted = intervals.slice().sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [[sorted[0][0], sorted[0][1]]];
+  for (let i = 1; i < sorted.length; i++) {
+    const [a, b] = sorted[i];
+    const last = merged[merged.length - 1];
+    if (a <= last[1] + EXTERIOR_EPS) {
+      last[1] = Math.max(last[1], b);
+    } else {
+      merged.push([a, b]);
+    }
+  }
+  return merged;
+}
+
+/** The portion(s) of [lo, hi] not covered by any interval in `covered`. */
+function subtractIntervals(lo: number, hi: number, covered: Array<[number, number]>): Array<[number, number]> {
+  const merged = mergeIntervals(covered);
+  const leftover: Array<[number, number]> = [];
+  let cursor = lo;
+  for (const [a, b] of merged) {
+    if (a > cursor + EXTERIOR_EPS) leftover.push([cursor, Math.min(a, hi)]);
+    cursor = Math.max(cursor, b);
+    if (cursor >= hi - EXTERIOR_EPS) break;
+  }
+  if (cursor < hi - EXTERIOR_EPS) leftover.push([cursor, hi]);
+  return leftover.filter(([a, b]) => b - a > EXTERIOR_EPS);
+}
+
+/**
+ * Real exterior-wall perimeter for ANY arrangement of axis-aligned rectangles — not a
+ * hardcoded rectangle, not a bounding box, not a "main block + one special-cased garage
+ * notch." For every rectangle's 4 sides, this subtracts whatever portion is covered by
+ * another rectangle's directly-abutting edge (a real interior wall — callers already
+ * derive those separately via `sharedEdgeOverlap`) and keeps only the leftover,
+ * truly-uncovered portion as a real exterior wall segment.
+ *
+ * This is the one piece of infrastructure that makes an L/T/U-shaped footprint render
+ * with a correct exterior perimeter automatically, with zero "which shape is this"
+ * special-casing anywhere downstream: a rectangle's uncovered edge IS the real exterior
+ * wall, whatever the reason it's uncovered (a narrower private wing, a shallower garage,
+ * a courtyard void, or a user dragging a room into an odd position in Studio). Replaces
+ * two previous, narrower approaches that both predate this: generate.ts's
+ * buildWallsAndDoors used a single hardcoded rectangle plus a special-cased garage notch;
+ * edit.ts's buildWallsAndDoorsFromGeometry used a pure bounding box that silently "filled
+ * in" any notch the moment a user touched Studio. One correct algorithm now backs both.
+ */
+export function computeExteriorSegments(rects: Rect[]): Segment[] {
+  const segments: Segment[] = [];
+
+  for (const r of rects) {
+    const right = r.x + r.w;
+    const rightCovered = rects
+      .filter((o) => o !== r && Math.abs(o.x - right) < EXTERIOR_EPS)
+      .map((o): [number, number] => [Math.max(r.y, o.y), Math.min(r.y + r.h, o.y + o.h)])
+      .filter(([a, b]) => b - a > EXTERIOR_EPS);
+    for (const [a, b] of subtractIntervals(r.y, r.y + r.h, rightCovered)) {
+      segments.push({ x1: right, y1: a, x2: right, y2: b });
+    }
+
+    const left = r.x;
+    const leftCovered = rects
+      .filter((o) => o !== r && Math.abs(o.x + o.w - left) < EXTERIOR_EPS)
+      .map((o): [number, number] => [Math.max(r.y, o.y), Math.min(r.y + r.h, o.y + o.h)])
+      .filter(([a, b]) => b - a > EXTERIOR_EPS);
+    for (const [a, b] of subtractIntervals(r.y, r.y + r.h, leftCovered)) {
+      segments.push({ x1: left, y1: a, x2: left, y2: b });
+    }
+
+    const bottom = r.y + r.h;
+    const bottomCovered = rects
+      .filter((o) => o !== r && Math.abs(o.y - bottom) < EXTERIOR_EPS)
+      .map((o): [number, number] => [Math.max(r.x, o.x), Math.min(r.x + r.w, o.x + o.w)])
+      .filter(([a, b]) => b - a > EXTERIOR_EPS);
+    for (const [a, b] of subtractIntervals(r.x, r.x + r.w, bottomCovered)) {
+      segments.push({ x1: a, y1: bottom, x2: b, y2: bottom });
+    }
+
+    const top = r.y;
+    const topCovered = rects
+      .filter((o) => o !== r && Math.abs(o.y + o.h - top) < EXTERIOR_EPS)
+      .map((o): [number, number] => [Math.max(r.x, o.x), Math.min(r.x + r.w, o.x + o.w)])
+      .filter(([a, b]) => b - a > EXTERIOR_EPS);
+    for (const [a, b] of subtractIntervals(r.x, r.x + r.w, topCovered)) {
+      segments.push({ x1: a, y1: top, x2: b, y2: top });
+    }
+  }
+
+  return segments;
+}
+
 /** Length of the overlap between two rectangles' shared edge, or 0 if they don't share one. */
 export function sharedEdgeOverlap(a: Rect, b: Rect): { x: number; y: number; length: number; orientation: "h" | "v" } | null {
   const EPS = 0.01;

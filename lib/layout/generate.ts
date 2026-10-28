@@ -1,6 +1,6 @@
 import type { BriefInput, Door, FloorPlan, Room, RoomType, Wall } from "./types";
 import { buildRoomProgram, getMinArea, type ProgramRoom } from "./program";
-import { allocateLengths, layoutColumn, layoutRow, sharedEdgeOverlap, type AllocItem, type Rect } from "./geometry";
+import { allocateLengths, computeExteriorSegments, layoutColumn, layoutRow, sharedEdgeOverlap, type AllocItem, type Rect } from "./geometry";
 import { autoPlaceFurniture } from "./furniture";
 import { computeWindows } from "./windows";
 import { computeDoorSwings } from "./doorSwings";
@@ -47,6 +47,17 @@ const COURTYARD_MIN_WING_WIDTH = 13;
 const COURTYARD_MIN_VOID = 8;
 /** Shallow full-width strip at the front of the private zone connecting both wings — doubles as the hallway the public zone's door anchors to. */
 const COURTYARD_CONNECTOR_DEPTH = 4.5;
+/**
+ * Real L-shaped massing: when `input.lShaped` is set, the private (bedroom) zone is laid
+ * out narrower than the public zone above it, flush on the left and stepped in on the
+ * right — a genuine, common single-story pattern (the bedroom wing recesses from the
+ * main living/garage block, picking up extra daylight on the recessed side instead of
+ * just being a flat-front box). The setback is a fraction of the footprint width, clamped
+ * to a sane real range so it reads as a deliberate architectural step, not a sliver.
+ */
+const L_SHAPE_SETBACK_FRACTION = 0.22;
+const L_SHAPE_SETBACK_MIN = 8;
+const L_SHAPE_SETBACK_MAX = 14;
 
 export interface LayoutVariant {
   /** Stable key, also used as the React list key in the compare UI. */
@@ -110,12 +121,22 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
   const width = roundTo(Math.sqrt(interiorArea * resolvedAspectRatio), 0.5);
   const depth = roundTo(interiorArea / width, 0.5);
 
+  const lShaped = !!input.lShaped;
+  const lShapeSetback = Math.min(L_SHAPE_SETBACK_MAX, Math.max(L_SHAPE_SETBACK_MIN, width * L_SHAPE_SETBACK_FRACTION));
+  // The private zone's own available width — full `width` normally, stepped in on the
+  // right when lShaped is set. Every private-zone topology below already takes "width"
+  // as a plain parameter for both layout AND topology selection, so handing it a smaller
+  // value here is the entire L-shape implementation: `computeExteriorSegments` (called
+  // from buildWallsAndDoors) picks up the resulting gap automatically, with no
+  // "is this plan L-shaped" branching anywhere in the wall/window/export/3D code.
+  const privateWidth = lShaped ? roundTo(width - lShapeSetback, 0.5) : width;
+
   const publicProgramRooms = [program.entry, ...program.publicRooms];
   const otherPublicRooms = program.publicRooms; // everything but the entry — the entry gets its own shallow strip below, not a shared-depth column
   const privateProgramRooms = [...program.bedrooms, ...program.privateBaths];
 
   const publicIdeal = sumIdeal(publicProgramRooms);
-  const privateIdeal = sumIdeal(privateProgramRooms) + estimateHallwayIdeal(privateProgramRooms.length, width);
+  const privateIdeal = sumIdeal(privateProgramRooms) + estimateHallwayIdeal(privateProgramRooms.length, privateWidth);
   const publicDepth = roundTo(depth * (publicIdeal / (publicIdeal + privateIdeal || 1)), 0.5);
   const privateDepth = depth - publicDepth;
 
@@ -157,7 +178,7 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
   }
 
   // ---- Private zone: bedrooms + bathrooms, in one or two rows around a hallway.
-  const privateZone = layoutPrivateZone(privateProgramRooms, width, publicDepth, privateDepth, !!program.garage, input.openPlan);
+  const privateZone = layoutPrivateZone(privateProgramRooms, privateWidth, publicDepth, privateDepth, !!program.garage, input.openPlan, lShaped);
   for (const p of [...privateProgramRooms, ...privateZone.extraRooms]) {
     rooms.push(toRoom(p, privateZone.rects.get(p.id)!));
   }
@@ -238,7 +259,7 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
     adjacency.push({ a: lastPublicRoom.id, b: program.garage.id });
   }
 
-  const { walls, doors } = buildWallsAndDoors(rooms, { width, depth }, adjacency);
+  const { walls, doors } = buildWallsAndDoors(rooms, adjacency);
 
   const entryRoom = rooms.find((r) => r.id === program.entry.id)!;
   doors.push({
@@ -345,6 +366,11 @@ export function layoutPrivateZone(
   privateDepth: number,
   hasGarage: boolean,
   openPlan: boolean,
+  /** Real L-shaped massing (see L_SHAPE_SETBACK_* above) — the caller already passed a
+   * narrower `width` for this; this flag only steers topology SELECTION, keeping the
+   * courtyard topology (which wants to own the full width itself for its two wings +
+   * void) off the table so its own geometry stays simple and well-tested, v1 scope. */
+  lShaped = false,
 ): PrivateZoneResult {
   if (items.length === 0) {
     return { rects: new Map(), adjacency: [], hallwayRect: null, courtyardRect: null, hallwayWingBRect: null, feasible: true, extraRooms: [] };
@@ -357,7 +383,7 @@ export function layoutPrivateZone(
   const secondaryBedrooms = others.filter((i) => i.type !== "bath");
   const ordered = [primary, ...(ensuite ? [ensuite] : []), ...secondaryBedrooms, ...sharedBaths];
 
-  const topology = pickPrivateTopology(ordered.length, width, privateDepth, hasGarage, openPlan);
+  const topology = pickPrivateTopology(ordered.length, width, privateDepth, hasGarage, openPlan, lShaped);
 
   if (topology === "courtyard") {
     return layoutPrivateZoneCourtyard(ordered, primary, ensuite, width, publicDepth, privateDepth);
@@ -489,12 +515,16 @@ function pickPrivateTopology(
   privateDepth: number,
   hasGarage: boolean,
   openPlan: boolean,
+  lShaped: boolean,
 ): "single" | "side-hallway" | "double-row" | "courtyard" {
   if (count <= 2) return "single";
 
   const courtyardWidthOk = width - 2 * COURTYARD_MIN_WING_WIDTH >= COURTYARD_MIN_VOID;
   const courtyardDepthOk = privateDepth - COURTYARD_CONNECTOR_DEPTH >= COURTYARD_MIN_VOID;
-  if (hasGarage && !openPlan && count >= 3 && courtyardWidthOk && courtyardDepthOk) {
+  // The courtyard topology wants the full private-zone width for its own two wings + void —
+  // an L-shaped plan has already spent part of that width on the massing setback, so it
+  // stays off the table here rather than compounding two different "notch" ideas in one plan.
+  if (!lShaped && hasGarage && !openPlan && count >= 3 && courtyardWidthOk && courtyardDepthOk) {
     return "courtyard";
   }
 
@@ -813,9 +843,18 @@ function buildSequentialAdjacency(
   return adjacency;
 }
 
+/**
+ * Builds every wall (interior + exterior) and every logically-declared door from the
+ * rooms' real placed geometry. Two independent passes: interior walls come from the
+ * generic pairwise shared-edge loop below (any two rooms that actually touch, garage
+ * included — no more special-casing the garage's shared wall separately); the exterior
+ * perimeter comes from `computeExteriorSegments` (lib/layout/geometry.ts), which derives
+ * it purely from the real room rectangles instead of a hardcoded main-rectangle shape.
+ * That's what lets a footprint come out genuinely L/T-shaped (a narrower private wing, a
+ * shallower garage, a courtyard void) with no "which shape is this" branching here.
+ */
 export function buildWallsAndDoors(
   rooms: Room[],
-  mainDims: { width: number; depth: number },
   adjacency: Array<{ a: string; b: string }>,
 ): { walls: Wall[]; doors: Door[] } {
   const byId = new Map(rooms.map((r) => [r.id, r]));
@@ -829,29 +868,14 @@ export function buildWallsAndDoors(
     walls.push({ id: `wall_${wallCounter++}`, x1, y1, x2, y2, exterior });
   }
 
-  const garage = rooms.find((r) => r.type === "garage");
-  const interiorRooms = rooms.filter((r) => r.type !== "garage");
-  const { width: mainWidth, depth: mainDepth } = mainDims;
-
-  addWall(0, 0, mainWidth, 0, true); // front
-  addWall(0, mainDepth, mainWidth, mainDepth, true); // back
-  addWall(0, 0, 0, mainDepth, true); // left
-
-  if (garage) {
-    const sharedBottom = Math.min(garage.h, mainDepth);
-    addWall(mainWidth, sharedBottom, mainWidth, mainDepth, true); // exterior sliver below the shared wall, if garage is shallower
-    addWall(mainWidth, 0, mainWidth, sharedBottom, false); // shared wall with the garage
-    addWall(garage.x, 0, garage.x + garage.w, 0, true);
-    addWall(garage.x, garage.h, garage.x + garage.w, garage.h, true);
-    addWall(garage.x + garage.w, 0, garage.x + garage.w, garage.h, true);
-  } else {
-    addWall(mainWidth, 0, mainWidth, mainDepth, true); // right
+  for (const seg of computeExteriorSegments(rooms)) {
+    addWall(seg.x1, seg.y1, seg.x2, seg.y2, true);
   }
 
-  for (let i = 0; i < interiorRooms.length; i++) {
-    for (let j = i + 1; j < interiorRooms.length; j++) {
-      const roomA = interiorRooms[i];
-      const roomB = interiorRooms[j];
+  for (let i = 0; i < rooms.length; i++) {
+    for (let j = i + 1; j < rooms.length; j++) {
+      const roomA = rooms[i];
+      const roomB = rooms[j];
       const overlap = sharedEdgeOverlap(roomA, roomB);
       if (overlap && overlap.length >= 1) {
         // A courtyard is a real open void, not an interior room — a wall facing it

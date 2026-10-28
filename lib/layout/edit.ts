@@ -12,15 +12,19 @@
 // direct-manipulation editor (same "derive from real geometry, never fake
 // it" standard as the rest of this codebase).
 //
-// Known simplification (documented rather than hidden): if room A's edge is
-// only *partially* covered by room B (e.g. A is 10ft wide, B only touches
-// 4ft of that edge, and the other 6ft touches nothing) the uncovered 6ft
-// does not get its own wall segment. In practice this only shows up if a
-// user drags a room into an odd, non-abutting position; it never affects
-// freshly generated plans, where rooms always fully tile their zone.
+// Exterior perimeter is derived the same shape-agnostic way as the generator's own
+// buildWallsAndDoors (lib/layout/generate.ts): computeExteriorSegments looks at the real
+// room rectangles and keeps only each room's truly-uncovered edge portions as exterior
+// wall, instead of wrapping a bounding-box rectangle around everything. That used to be a
+// real, documented gap — any plan with a genuinely non-rectangular footprint (an L-shaped
+// private wing, or a garage shallower than the house) silently reverted to a filled-in
+// rectangle the moment a user moved anything in Studio, even a single unrelated room,
+// because the old bounding-box logic didn't know a "notch" was ever there. Now the same
+// algorithm backs both the initial generation and every Studio edit, so an L-shaped plan
+// stays L-shaped after a drag/resize/add/remove instead of silently squaring off.
 
 import type { Door, FloorPlan, FurnitureItem, FurnitureType, Room, RoomType, Wall } from "./types";
-import { sharedEdgeOverlap } from "./geometry";
+import { computeExteriorSegments, sharedEdgeOverlap } from "./geometry";
 import { makeFurniture } from "./furniture";
 import { computeWindows } from "./windows";
 import { computeDoorSwings } from "./doorSwings";
@@ -147,7 +151,7 @@ function recompute(rooms: Room[], source: FloorPlan): FloorPlan {
   const footprintW = rooms.length ? Math.max(...rooms.map((r) => r.x + r.w)) : 0;
   const footprintH = rooms.length ? Math.max(...rooms.map((r) => r.y + r.h)) : 0;
 
-  const { walls, doors } = buildWallsAndDoorsFromGeometry(rooms, footprintW, footprintH);
+  const { walls, doors } = buildWallsAndDoorsFromGeometry(rooms);
   const overlapWarnings = checkOverlaps(rooms);
   // Re-scored from the fresh geometry + furniture every time, same as windows below — a
   // dragged room, a moved sofa, or a newly-added door never leaves a stale hinge/swing choice
@@ -172,8 +176,6 @@ function recompute(rooms: Room[], source: FloorPlan): FloorPlan {
 
 function buildWallsAndDoorsFromGeometry(
   rooms: Room[],
-  footprintW: number,
-  footprintH: number,
 ): { walls: Wall[]; doors: Door[] } {
   const walls: Wall[] = [];
   const doors: Door[] = [];
@@ -185,11 +187,11 @@ function buildWallsAndDoorsFromGeometry(
     walls.push({ id: `wall_${wallCounter++}`, x1, y1, x2, y2, exterior });
   }
 
-  // Exterior perimeter = bounding box of everything currently on the plan.
-  addWall(0, 0, footprintW, 0, true);
-  addWall(0, footprintH, footprintW, footprintH, true);
-  addWall(0, 0, 0, footprintH, true);
-  addWall(footprintW, 0, footprintW, footprintH, true);
+  // Exterior perimeter = each room's own real uncovered edges (see file header) — not a
+  // bounding box, so a dragged/resized plan keeps whatever real shape its rooms imply.
+  for (const seg of computeExteriorSegments(rooms)) {
+    addWall(seg.x1, seg.y1, seg.x2, seg.y2, true);
+  }
 
   // Interior walls + doors: every pair of rooms that actually share an edge.
   for (let i = 0; i < rooms.length; i++) {

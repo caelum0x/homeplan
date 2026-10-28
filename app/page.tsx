@@ -87,6 +87,8 @@ export default function Home() {
   const [proStatus, setProStatus] = useState<{ isPro: boolean; hosted: boolean } | null>(null);
   // Explicit story choice from the toggle; null = follow whatever the description says (default 1).
   const [storiesChoice, setStoriesChoice] = useState<1 | 2 | null>(null);
+  // Explicit L-shaped-footprint choice from the toggle; null = follow whatever the description says.
+  const [lShapedChoice, setLShapedChoice] = useState<boolean | null>(null);
   // Multi-story plans: every floor (ground first). `plan` is always the floor being viewed/edited,
   // kept in sync with floors[activeFloor] by updatePlan so edits on one floor survive switching.
   const [floors, setFloors] = useState<FloorPlan[] | null>(null);
@@ -118,6 +120,9 @@ export default function Home() {
 
   const exportGated = Boolean(proStatus?.hosted && !proStatus?.isPro);
   const effectiveStories = storiesChoice ?? parseDescription(description).stories ?? 1;
+  // L-shaped massing is single-story-only v1 (lib/layout/multiStory.ts never reads it) — the
+  // toggle only has an effect (and only shows as available) when 1 story is selected.
+  const effectiveLShaped = effectiveStories === 2 ? false : (lShapedChoice ?? parseDescription(description).lShaped ?? false);
 
   /** Loads a single-story plan (template, share link, upload, hero example) — clears any multi-story state. */
   function loadSinglePlan(next: FloorPlan | null) {
@@ -146,7 +151,11 @@ export default function Home() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(storiesChoice ? { description, stories: storiesChoice } : { description }),
+        body: JSON.stringify({
+          description,
+          ...(storiesChoice ? { stories: storiesChoice } : {}),
+          ...(effectiveStories === 1 && lShapedChoice !== null ? { lShaped: lShapedChoice } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -399,6 +408,18 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
+                {effectiveStories === 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setLShapedChoice(!effectiveLShaped)}
+                    className={`segmented-btn ${effectiveLShaped ? "active" : ""}`}
+                    style={{ border: "1px solid var(--color-border)" }}
+                    aria-pressed={effectiveLShaped}
+                    title="Private bedroom wing steps in from the main block instead of a flat rectangle"
+                  >
+                    L-shaped
+                  </button>
+                )}
                 <button type="submit" className="btn btn-primary" disabled={stage === "loading" || description.trim().length < 5}>
                   {stage === "loading" ? "Generating…" : "Generate floor plan"}
                   {stage !== "loading" && <ArrowIcon />}
