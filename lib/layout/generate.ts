@@ -66,6 +66,25 @@ export interface LayoutVariant {
   description: string;
   /** Multiplier applied to the engine's own computed baseline ratio (see computeBaselineAspectRatio) — never an absolute override, so a variant can never undo the deep-footprint anti-"bowling-alley-bedroom" fix below. */
   ratioMultiplier: number;
+  /**
+   * Ordered private-zone topology wish-list for this variant, tried against the
+   * *real* geometry `generateFloorPlan` computes for this specific variant's own
+   * width/depth (see `resolvePrivateTopology`) — honored only when structurally
+   * eligible there, silently ignored (falling back to the engine's own natural
+   * pick) otherwise. This exists because before it, `generateFloorPlanOptions`
+   * only varied the aspect-ratio multiplier: for the common 3-4-private-room
+   * case, `pickPrivateTopology`'s thresholds rarely flip between a 0.85x and
+   * 1.25x multiplier of the *same* room count, so all 3 variants independently
+   * landed on the *same* topology — exactly the 2026-10-27 flagship audit's
+   * residual complaint ("same room order, same adjacency, same door list shape,
+   * only the numbers differ") that the 2026-10-27/28 cross-brief topology work
+   * (side-hallway/courtyard/double-row, selected by room count + program shape)
+   * never actually touched, since that work diversifies topology *across
+   * briefs*, not across a single brief's own 3 variants. Undefined = no
+   * preference, keep the engine's natural pick (used for "classic" so at least
+   * one variant always reflects the engine's own unforced default reasoning).
+   */
+  privateTopologyPreferences?: PrivateTopology[];
 }
 
 /**
@@ -78,11 +97,29 @@ export interface LayoutVariant {
  * 3+ bedroom brief still gets the deep/narrow anti-sliver-bedroom treatment
  * in every variant, just scaled — e.g. "Compact" is deeper still, "Wide" is
  * the least deep of the three but never reverts to a flat/unsafe ratio.
+ *
+ * "compact" and "wide" also carry a real private-zone *topology* preference
+ * (not just an aspect-ratio nudge) — see `LayoutVariant.privateTopologyPreferences`
+ * and `resolvePrivateTopology` for exactly when each is honored vs. silently
+ * falls back. "classic" deliberately carries none, so it always shows the
+ * engine's own unforced default.
  */
 export const LAYOUT_VARIANTS: LayoutVariant[] = [
-  { id: "compact", label: "Compact", description: "Closer to square — shorter exterior walls, tighter hallway.", ratioMultiplier: 0.85 },
+  {
+    id: "compact",
+    label: "Compact",
+    description: "Closer to square — shorter exterior walls, tighter hallway.",
+    ratioMultiplier: 0.85,
+    privateTopologyPreferences: ["courtyard", "double-row"],
+  },
   { id: "classic", label: "Classic", description: "The engine's own balanced default proportion for this program.", ratioMultiplier: 1.0 },
-  { id: "wide", label: "Wide", description: "A broad street-facing front, shallower depth — ranch-style massing.", ratioMultiplier: 1.25 },
+  {
+    id: "wide",
+    label: "Wide",
+    description: "A broad street-facing front, shallower depth — ranch-style massing.",
+    ratioMultiplier: 1.25,
+    privateTopologyPreferences: ["side-hallway", "courtyard"],
+  },
 ];
 
 /** Absolute floor/ceiling on the footprint ratio regardless of baseline*multiplier — keeps even a "Compact" variant on an already-deep (3+ bedroom) baseline from overshooting into unusably narrow side rooms. */
@@ -111,7 +148,12 @@ export function computeBaselineAspectRatio(program: ReturnType<typeof buildRoomP
  * computed from `input`. `aspectRatio` defaults to the engine's own computed
  * baseline (see computeBaselineAspectRatio) when not explicitly passed.
  */
-export function generateFloorPlan(input: BriefInput, aspectRatio?: number): FloorPlan {
+export function generateFloorPlan(
+  input: BriefInput,
+  aspectRatio?: number,
+  /** See `LayoutVariant.privateTopologyPreferences` — honored only when the variant's own computed geometry below is structurally eligible for it. */
+  privateTopologyPreferences?: PrivateTopology[],
+): FloorPlan {
   const program = buildRoomProgram(input);
   const warnings: string[] = [];
 
@@ -178,7 +220,16 @@ export function generateFloorPlan(input: BriefInput, aspectRatio?: number): Floo
   }
 
   // ---- Private zone: bedrooms + bathrooms, in one or two rows around a hallway.
-  const privateZone = layoutPrivateZone(privateProgramRooms, privateWidth, publicDepth, privateDepth, !!program.garage, input.openPlan, lShaped);
+  const privateZone = layoutPrivateZone(
+    privateProgramRooms,
+    privateWidth,
+    publicDepth,
+    privateDepth,
+    !!program.garage,
+    input.openPlan,
+    lShaped,
+    privateTopologyPreferences,
+  );
   for (const p of [...privateProgramRooms, ...privateZone.extraRooms]) {
     rooms.push(toRoom(p, privateZone.rects.get(p.id)!));
   }
@@ -371,6 +422,8 @@ export function layoutPrivateZone(
    * courtyard topology (which wants to own the full width itself for its two wings +
    * void) off the table so its own geometry stays simple and well-tested, v1 scope. */
   lShaped = false,
+  /** See `LayoutVariant.privateTopologyPreferences` — tried in order against this call's own real geometry, first structurally-eligible one wins; falls back to the natural pick when none of them are eligible. */
+  topologyPreferences?: PrivateTopology[],
 ): PrivateZoneResult {
   if (items.length === 0) {
     return { rects: new Map(), adjacency: [], hallwayRect: null, courtyardRect: null, hallwayWingBRect: null, feasible: true, extraRooms: [] };
@@ -383,7 +436,7 @@ export function layoutPrivateZone(
   const secondaryBedrooms = others.filter((i) => i.type !== "bath");
   const ordered = [primary, ...(ensuite ? [ensuite] : []), ...secondaryBedrooms, ...sharedBaths];
 
-  const topology = pickPrivateTopology(ordered.length, width, privateDepth, hasGarage, openPlan, lShaped);
+  const topology = resolvePrivateTopology(ordered.length, width, privateDepth, hasGarage, openPlan, lShaped, topologyPreferences);
 
   if (topology === "courtyard") {
     return layoutPrivateZoneCourtyard(ordered, primary, ensuite, width, publicDepth, privateDepth);
@@ -509,29 +562,82 @@ export function layoutPrivateZone(
  *   the house), which doesn't pair naturally with a wing-and-void private
  *   zone — those programs stay on side-hallway/double-row instead.
  */
-function pickPrivateTopology(
+export type PrivateTopology = "single" | "side-hallway" | "double-row" | "courtyard";
+
+/**
+ * Every private-zone topology that is *structurally* sound for this exact
+ * program shape/geometry, in the same priority order `pickPrivateTopology`
+ * used to apply internally (so `listEligibleTopologies(...)[0]` is exactly
+ * the old function's return value — a pure refactor, not a behavior change).
+ * Exposed as a list (not just the single natural pick) so a caller — see
+ * `resolvePrivateTopology` below — can honor a *different*, still-eligible
+ * topology instead, which is what lets `generateFloorPlanOptions`'s 3 layout
+ * variants of the *same* brief genuinely diverge in topology instead of only
+ * in aspect ratio (see `LayoutVariant.privateTopologyPreferences`).
+ */
+export function listEligibleTopologies(
   count: number,
   width: number,
   privateDepth: number,
   hasGarage: boolean,
   openPlan: boolean,
   lShaped: boolean,
-): "single" | "side-hallway" | "double-row" | "courtyard" {
-  if (count <= 2) return "single";
+): PrivateTopology[] {
+  if (count <= 2) return ["single"];
 
   const courtyardWidthOk = width - 2 * COURTYARD_MIN_WING_WIDTH >= COURTYARD_MIN_VOID;
   const courtyardDepthOk = privateDepth - COURTYARD_CONNECTOR_DEPTH >= COURTYARD_MIN_VOID;
   // The courtyard topology wants the full private-zone width for its own two wings + void —
   // an L-shaped plan has already spent part of that width on the massing setback, so it
   // stays off the table here rather than compounding two different "notch" ideas in one plan.
-  if (!lShaped && hasGarage && !openPlan && count >= 3 && courtyardWidthOk && courtyardDepthOk) {
-    return "courtyard";
-  }
+  const courtyardEligible = !lShaped && hasGarage && !openPlan && count >= 3 && courtyardWidthOk && courtyardDepthOk;
 
   const sideHallwayWidthOk = width - HALLWAY_WIDTH >= 9;
-  if (count <= 4 && sideHallwayWidthOk) return "side-hallway";
-  if (privateDepth >= HALLWAY_WIDTH + 16) return "double-row";
-  return sideHallwayWidthOk ? "side-hallway" : "single";
+  const sideHallwayEligible = count <= 4 && sideHallwayWidthOk;
+  const doubleRowEligible = privateDepth >= HALLWAY_WIDTH + 16;
+
+  const result: PrivateTopology[] = [];
+  if (courtyardEligible) result.push("courtyard");
+  if (sideHallwayEligible) result.push("side-hallway");
+  if (doubleRowEligible) result.push("double-row");
+  if (result.length === 0) result.push(sideHallwayWidthOk ? "side-hallway" : "single");
+  return result;
+}
+
+/**
+ * Picks which of the private zone's genuinely distinct topologies to use for
+ * one specific call's real geometry: the natural pick (first entry of
+ * `listEligibleTopologies`, i.e. identical to the old `pickPrivateTopology`)
+ * unless `preferences` names an earlier, *also*-eligible alternative — e.g.
+ * a layout variant that wants "courtyard" over the natural "side-hallway"
+ * pick, but only when a real courtyard actually fits this variant's own
+ * width/depth, never forced past that.
+ */
+function resolvePrivateTopology(
+  count: number,
+  width: number,
+  privateDepth: number,
+  hasGarage: boolean,
+  openPlan: boolean,
+  lShaped: boolean,
+  preferences?: PrivateTopology[],
+): PrivateTopology {
+  const naturalEligible = listEligibleTopologies(count, width, privateDepth, hasGarage, openPlan, lShaped);
+  if (preferences) {
+    // A *preference* (not the natural pick) may also reach for "side-hallway" past
+    // listEligibleTopologies's own count<=4 cap: that cap is a priority/aesthetic
+    // choice for which topology reads best by default, not a structural limit —
+    // `layoutPrivateZoneSideHallway` generalizes to any item count via `layoutColumn`
+    // (same feasibility/sliver-warning machinery as every other count), so a variant
+    // that explicitly wants it for a 5+ room program gets a real, structurally sound
+    // (if deeper/narrower) layout instead of being silently refused one.
+    const sideHallwayWidthOk = width - HALLWAY_WIDTH >= 9;
+    const preferenceEligible = new Set(naturalEligible);
+    if (sideHallwayWidthOk) preferenceEligible.add("side-hallway");
+    const preferred = preferences.find((p) => preferenceEligible.has(p));
+    if (preferred) return preferred;
+  }
+  return naturalEligible[0];
 }
 
 /**
@@ -1005,13 +1111,20 @@ export interface FloorPlanOption {
  * layouts, not a single plan styled 3 ways. Each variant's aspect ratio is
  * the engine's own computed baseline for this exact program (see
  * computeBaselineAspectRatio) scaled by that variant's multiplier, so the
- * anti-"bowling-alley-bedroom" deep-footprint fix always applies.
+ * anti-"bowling-alley-bedroom" deep-footprint fix always applies. Each
+ * variant also carries its own `privateTopologyPreferences` through to
+ * `generateFloorPlan`, so (for the common 3-4-private-room case, where more
+ * than one real topology is usually structurally eligible) "compact" and
+ * "wide" can land on a genuinely different private-zone topology from
+ * "classic" — not just a different aspect ratio of the same one. See
+ * `LayoutVariant.privateTopologyPreferences` for exactly when this is honored
+ * vs. silently falls back.
  */
 export function generateFloorPlanOptions(input: BriefInput): FloorPlanOption[] {
   const program = buildRoomProgram(input);
   const baseline = computeBaselineAspectRatio(program);
   return LAYOUT_VARIANTS.map((variant) => ({
     variant,
-    plan: generateFloorPlan(input, baseline * variant.ratioMultiplier),
+    plan: generateFloorPlan(input, baseline * variant.ratioMultiplier, variant.privateTopologyPreferences),
   }));
 }
