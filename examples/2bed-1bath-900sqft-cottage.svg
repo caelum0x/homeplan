@@ -31,29 +31,17 @@
 <text x="112.5" y="290.3333333333333" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Primary Bedroom</text>
 <text x="112.5" y="305.3333333333333" text-anchor="middle" font-size="11" fill="#5a5a5a">15.5' x 6.7' (103.3 sqft)</text>
 </g>
-<rect x="35" y="213.33333333333331" width="125" height="60" fill="#e9f1f4" stroke="#c9c9c9" stroke-width="1" />
-<clipPath id="clip_bedroom_2"><rect x="35" y="213.33333333333331" width="125" height="60" /></clipPath>
+<rect x="35" y="213.33333333333331" width="230" height="60" fill="#e9f1f4" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_bedroom_2"><rect x="35" y="213.33333333333331" width="230" height="60" /></clipPath>
 <g clip-path="url(#clip_bedroom_2)">
-<text x="97.5" y="229.83333333333331" text-anchor="middle" font-size="12.5" font-weight="600" fill="#2b2b2b">Bedroom 2</text>
-<text x="97.5" y="244.33333333333331" text-anchor="middle" font-size="10.5" fill="#5a5a5a">12.5' x 6.0' (75 sqft)</text>
+<text x="150" y="230.33333333333331" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Bedroom 2</text>
+<text x="150" y="245.33333333333331" text-anchor="middle" font-size="11" fill="#5a5a5a">23.0' x 6.0' (138 sqft)</text>
 </g>
-<rect x="35" y="180" width="75" height="33.33333333333333" fill="#e2eeef" stroke="#c9c9c9" stroke-width="1" />
-<clipPath id="clip_bath_shared_1"><rect x="35" y="180" width="75" height="33.33333333333333" /></clipPath>
+<rect x="35" y="180" width="230" height="33.33333333333333" fill="#e2eeef" stroke="#c9c9c9" stroke-width="1" />
+<clipPath id="clip_bath_shared_1"><rect x="35" y="180" width="230" height="33.33333333333333" /></clipPath>
 <g clip-path="url(#clip_bath_shared_1)">
-<text x="72.5" y="193" text-anchor="middle" font-size="9" font-weight="600" fill="#2b2b2b">Bathroom</text>
-<text x="72.5" y="204" text-anchor="middle" font-size="7" fill="#5a5a5a">7.5' x 3.3' (25 sqft)</text>
-</g>
-<rect x="110" y="180" width="155" height="33.33333333333333" fill="#ececec" stroke="#c9c9c9" stroke-width="1" />
-<clipPath id="clip_bath_shared_1_closet"><rect x="110" y="180" width="155" height="33.33333333333333" /></clipPath>
-<g clip-path="url(#clip_bath_shared_1_closet)">
-<text x="187.5" y="197" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Closet</text>
-<text x="187.5" y="212" text-anchor="middle" font-size="11" fill="#5a5a5a">15.5' x 3.3' (51.7 sqft)</text>
-</g>
-<rect x="160" y="213.33333333333331" width="105" height="60" fill="#ececec" stroke="#c9c9c9" stroke-width="1" />
-<clipPath id="clip_bedroom_2_closet"><rect x="160" y="213.33333333333331" width="105" height="60" /></clipPath>
-<g clip-path="url(#clip_bedroom_2_closet)">
-<text x="212.5" y="227.83333333333331" text-anchor="middle" font-size="10.5" font-weight="600" fill="#2b2b2b">Closet</text>
-<text x="212.5" y="240.33333333333331" text-anchor="middle" font-size="8.5" fill="#5a5a5a">10.5' x 6.0' (63 sqft)</text>
+<text x="150" y="197" text-anchor="middle" font-size="13" font-weight="600" fill="#2b2b2b">Bathroom</text>
+<text x="150" y="212" text-anchor="middle" font-size="11" fill="#5a5a5a">23.0' x 3.3' (76.7 sqft)</text>
 </g>
 <rect x="190" y="273.3333333333333" width="75" height="66.66666666666666" fill="#ececec" stroke="#c9c9c9" stroke-width="1" />
 <clipPath id="clip_bedroom_1_closet"><rect x="190" y="273.3333333333333" width="75" height="66.66666666666666" /></clipPath>
@@ -73,8 +61,8 @@
 <line x1="0" y1="70" x2="0" y2="180" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
 <line x1="265" y1="70" x2="265" y2="180" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
 <line x1="35" y1="340" x2="190" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
-<line x1="265" y1="180" x2="265" y2="213.33333333333331" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
 <line x1="265" y1="213.33333333333331" x2="265" y2="273.3333333333333" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
+<line x1="265" y1="180" x2="265" y2="213.33333333333331" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
 <line x1="265" y1="273.3333333333333" x2="265" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
 <line x1="190" y1="340" x2="265" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
 <line x1="0" y1="180" x2="0" y2="340" stroke="#2b2b2b" stroke-width="4" stroke-linecap="square" />
@@ -86,20 +74,15 @@
 <line x1="35" y1="180" x2="104.83333333333334" y2="180" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
 <line x1="0" y1="180" x2="35" y2="180" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
 <line x1="185" y1="70" x2="185" y2="180" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="110" y1="180" x2="185" y2="180" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="104.83333333333334" y1="180" x2="185" y2="180" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
 <line x1="185" y1="180" x2="265" y2="180" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="35" y1="273.3333333333333" x2="160" y2="273.3333333333333" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="160" y1="273.3333333333333" x2="190" y2="273.3333333333333" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="35" y1="273.3333333333333" x2="190" y2="273.3333333333333" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
 <line x1="190" y1="273.33333333333326" x2="190" y2="340" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
 <line x1="35" y1="273.33333333333326" x2="35" y2="340" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="35" y1="213.33333333333331" x2="110" y2="213.33333333333331" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="110" y1="213.33333333333331" x2="160" y2="213.33333333333331" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="160" y1="213.33333333333331" x2="160" y2="273.3333333333333" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="35" y1="213.33333333333331" x2="35" y2="273.3333333333333" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="110" y1="180" x2="110" y2="213.3333333333333" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="35" y1="180" x2="35" y2="213.3333333333333" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
-<line x1="160" y1="213.33333333333331" x2="265" y2="213.33333333333331" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="35" y1="213.33333333333331" x2="265" y2="213.33333333333331" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
 <line x1="190" y1="273.3333333333333" x2="265" y2="273.3333333333333" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="35" y1="213.33333333333331" x2="35" y2="273.3333333333333" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
+<line x1="35" y1="180" x2="35" y2="213.3333333333333" stroke="#2b2b2b" stroke-width="2" stroke-linecap="square" />
 <line x1="59.2" y1="0" x2="89.2" y2="0" stroke="#7fb3d9" stroke-width="5" />
 <line x1="59.2" y1="0" x2="89.2" y2="0" stroke="#ffffff" stroke-width="1.5" />
 <line x1="175.79999999999998" y1="0" x2="205.79999999999998" y2="0" stroke="#7fb3d9" stroke-width="5" />
@@ -116,6 +99,8 @@
 <line x1="63.400000000000006" y1="340" x2="93.4" y2="340" stroke="#ffffff" stroke-width="1.5" />
 <line x1="131.6" y1="340" x2="161.6" y2="340" stroke="#7fb3d9" stroke-width="5" />
 <line x1="131.6" y1="340" x2="161.6" y2="340" stroke="#ffffff" stroke-width="1.5" />
+<line x1="265" y1="228.33333333333331" x2="265" y2="258.3333333333333" stroke="#7fb3d9" stroke-width="5" />
+<line x1="265" y1="228.33333333333331" x2="265" y2="258.3333333333333" stroke="#ffffff" stroke-width="1.5" />
 <line x1="104.83333333333334" y1="110" x2="104.83333333333334" y2="140" stroke="#ffffff" stroke-width="4" />
 <polyline points="104.8,140.0 100.9,139.7 97.1,139.0 93.4,137.7 89.8,136.0 86.6,133.8 83.6,131.2 81.0,128.3 78.9,125.0 77.1,121.5 75.9,117.8 75.1,113.9 74.8,110.0" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
 <line x1="104.83333333333334" y1="110" x2="74.83333333333334" y2="110" stroke="#8a8578" stroke-width="1.5" />
@@ -126,20 +111,14 @@
 <polyline points="67.4,70.0 67.2,66.1 66.4,62.2 65.1,58.5 63.4,55.0 61.2,51.7 58.6,48.8 55.7,46.2 52.4,44.0 48.9,42.3 45.2,41.0 41.3,40.3 37.4,40.0" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
 <line x1="37.41666666666667" y1="70" x2="37.41666666666667" y2="40" stroke="#8a8578" stroke-width="1.5" />
 <line x1="35" y1="183.3333333333333" x2="35" y2="209.99999999999997" stroke="#ffffff" stroke-width="4" />
-<polyline points="35.0,210.0 31.5,209.8 28.1,209.1 24.8,208.0 21.7,206.4 18.8,204.5 16.1,202.2 13.8,199.6 11.9,196.7 10.4,193.5 9.2,190.2 8.6,186.8 8.3,183.3" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
-<line x1="35" y1="183.33333333333331" x2="8.33333333333334" y2="183.33333333333331" stroke="#8a8578" stroke-width="1.5" />
+<polyline points="35.0,210.0 38.5,209.8 41.9,209.1 45.2,208.0 48.3,206.4 51.2,204.5 53.9,202.2 56.2,199.6 58.1,196.7 59.6,193.5 60.8,190.2 61.4,186.8 61.7,183.3" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
+<line x1="35" y1="183.33333333333331" x2="61.66666666666666" y2="183.33333333333331" stroke="#8a8578" stroke-width="1.5" />
 <line x1="35" y1="228.33333333333331" x2="35" y2="258.3333333333333" stroke="#ffffff" stroke-width="4" />
 <polyline points="35.0,258.3 31.1,258.1 27.2,257.3 23.5,256.0 20.0,254.3 16.7,252.1 13.8,249.5 11.2,246.6 9.0,243.3 7.3,239.8 6.0,236.1 5.3,232.2 5.0,228.3" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
 <line x1="35" y1="228.33333333333331" x2="5" y2="228.33333333333331" stroke="#8a8578" stroke-width="1.5" />
 <line x1="35" y1="291.66666666666663" x2="35" y2="321.66666666666663" stroke="#ffffff" stroke-width="4" />
 <polyline points="35.0,321.7 31.1,321.4 27.2,320.6 23.5,319.4 20.0,317.6 16.7,315.5 13.8,312.9 11.2,309.9 9.0,306.7 7.3,303.1 6.0,299.4 5.3,295.6 5.0,291.7" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
 <line x1="35" y1="291.66666666666663" x2="5" y2="291.66666666666663" stroke="#8a8578" stroke-width="1.5" />
-<line x1="110" y1="183.3333333333333" x2="110" y2="209.99999999999997" stroke="#ffffff" stroke-width="4" />
-<polyline points="110.0,210.0 113.5,209.8 116.9,209.1 120.2,208.0 123.3,206.4 126.2,204.5 128.9,202.2 131.2,199.6 133.1,196.7 134.6,193.5 135.8,190.2 136.4,186.8 136.7,183.3" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
-<line x1="110" y1="183.33333333333331" x2="136.66666666666666" y2="183.33333333333331" stroke="#8a8578" stroke-width="1.5" />
-<line x1="160" y1="228.33333333333331" x2="160" y2="258.3333333333333" stroke="#ffffff" stroke-width="4" />
-<polyline points="160.0,258.3 156.1,258.1 152.2,257.3 148.5,256.0 145.0,254.3 141.7,252.1 138.8,249.5 136.2,246.6 134.0,243.3 132.3,239.8 131.0,236.1 130.3,232.2 130.0,228.3" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
-<line x1="160" y1="228.33333333333331" x2="130" y2="228.33333333333331" stroke="#8a8578" stroke-width="1.5" />
 <line x1="190" y1="291.66666666666663" x2="190" y2="321.66666666666663" stroke="#ffffff" stroke-width="4" />
 <polyline points="190.0,321.7 186.1,321.4 182.2,320.6 178.5,319.4 175.0,317.6 171.7,315.5 168.8,312.9 166.2,309.9 164.0,306.7 162.3,303.1 161.0,299.4 160.3,295.6 160.0,291.7" fill="none" stroke="#b7b2a3" stroke-width="1" stroke-dasharray="2 2" />
 <line x1="190" y1="291.66666666666663" x2="160" y2="291.66666666666663" stroke="#8a8578" stroke-width="1.5" />
@@ -200,6 +179,11 @@
 <g transform="translate(39, 246.33333333333331) rotate(0, 8, 8)">
 <rect x="0" y="0" width="16" height="16" fill="#ad9a82" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
 <circle cx="8" cy="8" r="1.92" fill="none" stroke="#5a5a5a" stroke-width="1" />
+</g>
+<g transform="translate(59, 246.33333333333331) rotate(0, 20, 10)">
+<rect x="0" y="0" width="40" height="20" fill="#ad9a82" fill-opacity="0.85" stroke="#5a5a5a" stroke-width="0.75" rx="2" />
+<line x1="20" y1="0" x2="20" y2="20" stroke="#5a5a5a" stroke-width="1" />
+<line x1="0" y1="10" x2="40" y2="10" stroke="#5a5a5a" stroke-width="1" />
 </g>
 </g>
 </svg>

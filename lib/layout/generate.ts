@@ -39,6 +39,22 @@ export const ENTRY_DEPTH_TARGET = 7;
 export const MIN_ENTRY_DEPTH = 4;
 /** Minimum depth left over after carving out a closet from a sliver room — below this, the split isn't worth doing and the honest aspect-ratio warning stays instead. */
 const CLOSET_MIN_DEPTH = 3;
+/**
+ * Maximum real depth for a carved-off closet (feet) — a generous real walk-in
+ * closet/wardrobe room tops out around here; beyond it, it stops reading as a
+ * closet and starts reading as an unexplained extra room. Real bug found by
+ * actually generating a side-hallway-topology brief ("cozy 2 bedroom 1 bath
+ * cottage, 900 sqft") and reading the output: the carved "closet" next to a
+ * 25 sqft bathroom came out 15.5' x 3.3' = 51.7 sqft — bigger than the bathroom
+ * itself and bigger than Bedroom 2 (75 sqft). The column topology's shared "row
+ * depth" is the house's full perpendicular depth (e.g. 23ft), so whatever the
+ * main room doesn't use all flows into the closet with no ceiling. 8ft was
+ * picked (not the smaller 6ft first tried) specifically because it's just above
+ * the already-shipped, already-sane 7ft closets seen on other real briefs (e.g.
+ * a 4bed/3bath/garage/office brief's existing 7.0' x 3.6' = 25.1 sqft bathroom
+ * closet) — a tighter cap would have reverted those already-good splits too.
+ */
+const CLOSET_MAX_DEPTH = 8;
 /** Room types where carving off a closet from a too-deep sliver is a real, common architectural pattern (primary suite + walk-in closet, bath + linen closet) rather than a cosmetic relabeling. */
 const SLIVER_SPLITTABLE_TYPES = new Set<RoomType>(["primary_bedroom", "bedroom", "primary_bath", "bath", "half_bath"]);
 /** Minimum width a courtyard-topology wing needs — enough for a real room, plus (for the secondary wing, when it has 2+ independent rooms) its own internal corridor. */
@@ -900,6 +916,17 @@ export function splitSliverRooms(
     const targetDepth = Math.min(rowDepth - CLOSET_MIN_DEPTH, roundTo(Math.sqrt(item.idealArea * 1.3), 0.5));
     const closetDepth = roundTo(rowDepth - targetDepth, 0.5);
     if (targetDepth < item.minWidth || closetDepth < CLOSET_MIN_DEPTH) continue; // not enough depth to split cleanly — keep the honest warning instead
+    // Real walk-in/linen closets top out around here. When rowDepth is much larger
+    // than this room actually needs (e.g. the side-hallway topology's shared column
+    // depth, which is the house's full perpendicular depth, not a per-room budget),
+    // the leftover strip can balloon into an unexplained extra "room" bigger than
+    // the bedroom/bath it's attached to. Handing that excess to the main room instead
+    // doesn't help either — the room's *other* axis (its corridor-frontage slot) is
+    // fixed by the column's own length allocation, so a deeper main room only makes
+    // its aspect worse, not better. Bail out of the split entirely in that case and
+    // keep the existing honest "unrealistic shape" warning — a confidently-wrong
+    // 50+ sqft "closet" is worse than an honest warning.
+    if (closetDepth > CLOSET_MAX_DEPTH) continue;
 
     const mainAspect = Math.max(rect.w, targetDepth) / Math.min(rect.w, targetDepth);
     if (mainAspect >= originalLong / originalShort) continue; // the split wouldn't actually improve the shape — don't bother
