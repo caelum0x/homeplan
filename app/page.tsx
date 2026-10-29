@@ -6,6 +6,7 @@ import { FloorPlanStudio } from "@/components/FloorPlanStudio";
 import { FloorPlan3D } from "@/components/FloorPlan3D";
 import { AiRenderPanel } from "@/components/AiRenderPanel";
 import { ZoningPanel } from "@/components/ZoningPanel";
+import { LotFitPanel } from "@/components/LotFitPanel";
 import { PricingCta } from "@/components/PricingCta";
 import { VariantPicker } from "@/components/VariantPicker";
 import { ChatEditPanel } from "@/components/ChatEditPanel";
@@ -33,7 +34,7 @@ interface GenerateResponse {
   options: FloorPlanOption[];
 }
 
-type ViewMode = "plan" | "studio" | "3d" | "render" | "zoning";
+type ViewMode = "plan" | "studio" | "3d" | "render" | "zoning" | "lot";
 type Stage = "idle" | "loading" | "variants" | "editing";
 type EntryMode = "describe" | "templates" | "upload";
 
@@ -536,7 +537,7 @@ export default function Home() {
 
             <div className="toolbar">
               <div className="segmented">
-                {(["plan", "studio", "3d", "render", "zoning"] as ViewMode[]).map((mode) => (
+                {(["plan", "studio", "3d", "render", "zoning", "lot"] as ViewMode[]).map((mode) => (
                   <button
                     key={mode}
                     type="button"
@@ -551,7 +552,9 @@ export default function Home() {
                           ? "3D view"
                           : mode === "render"
                             ? "Style Moodboard"
-                            : "Zoning Assistant"}
+                            : mode === "zoning"
+                              ? "Zoning Assistant"
+                              : "Fit to Lot"}
                   </button>
                 ))}
               </div>
@@ -607,6 +610,7 @@ export default function Home() {
               {viewMode === "3d" && <FloorPlan3D plan={plan} />}
               {viewMode === "render" && <AiRenderPanel plan={plan} />}
               {viewMode === "zoning" && <ZoningPanel plan={plan} stories={floors ? (floors.length as 1 | 2) : 1} />}
+              {viewMode === "lot" && <LotFitPanel plan={plan} onApply={updatePlan} />}
             </div>
 
             <div style={{ marginTop: 18 }}>
