@@ -32,6 +32,23 @@ function parseSubscriptionData(data: unknown): SubscriptionData | null {
   return { subscription_id: subscriptionId, status, customer: { email, customer_id: customerId } };
 }
 
+/**
+ * The event payload's own top-level `timestamp` (ISO 8601, when the event
+ * actually happened per Dodo) — distinct from the `webhook-timestamp` header,
+ * which only guards replay of a single delivery within a 5-minute window and
+ * says nothing about ordering between two different events. Used to reject a
+ * stale, late-arriving event instead of trusting delivery order (Dodo's own
+ * docs: "Ordering: No guarantee. Events can arrive out of order."). Returns
+ * null for a missing/unparseable value so the caller can fall back to the
+ * pre-fix unconditional-apply behavior rather than guessing.
+ */
+function parseEventTimestamp(event: Record<string, unknown>): Date | null {
+  const raw = event.timestamp;
+  if (typeof raw !== "string") return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export async function POST(request: Request): Promise<Response> {
   const env = loadDodoEnv();
   if (!env) return new Response("Webhook not configured", { status: 503 });
@@ -58,8 +75,10 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (!event || typeof event !== "object") return new Response("Invalid event", { status: 400 });
 
-  const type = (event as { type?: unknown }).type;
-  const data = (event as { data?: unknown }).data;
+  const eventRecord = event as Record<string, unknown>;
+  const type = eventRecord.type;
+  const data = eventRecord.data;
+  const eventAt = parseEventTimestamp(eventRecord);
 
   if (typeof type === "string" && type.startsWith("subscription.")) {
     const subscription = parseSubscriptionData(data);
@@ -69,12 +88,14 @@ export async function POST(request: Request): Promise<Response> {
         subscription.subscription_id,
         subscription.status,
         subscription.customer.customer_id ?? null,
+        eventAt,
       );
       console.log("HomePlan Pro entitlement updated:", {
         type,
         email: subscription.customer.email,
         status: subscription.status,
         hasCustomerId: Boolean(subscription.customer.customer_id),
+        eventAt: eventAt?.toISOString() ?? null,
         eventId: id,
       });
     } else {

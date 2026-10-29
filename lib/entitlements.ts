@@ -21,12 +21,30 @@ function sql() {
   return neon(url);
 }
 
-/** Called from the verified Dodo webhook only — never from user input directly. customerId may be null for older event payloads that didn't include it; an existing stored value is preserved in that case. */
+/**
+ * Called from the verified Dodo webhook only — never from user input directly.
+ * customerId may be null for older event payloads that didn't include it; an
+ * existing stored value is preserved in that case.
+ *
+ * eventAt is the webhook payload's own top-level `timestamp` (when the event
+ * actually happened), not this process's receive time. Dodo's own webhook docs
+ * state plainly: "Ordering: No guarantee. Events can arrive out of order" (8
+ * retry attempts over up to ~34h backoff on failure). Reproduced live against
+ * this exact table pre-fix: deliver a real "subscription.cancelled" event, then
+ * deliver a real, OLDER "subscription.active" event second (simulating a
+ * delayed retry) — pre-fix, the older event wins because it is upserted last,
+ * silently resurrecting Pro access for an actually-cancelled, non-paying
+ * customer. eventAt lets the upsert reject a stale-but-late event instead of
+ * blindly trusting arrival order. null is accepted for payloads that omit a
+ * parseable timestamp, in which case the event is applied unconditionally
+ * (the prior, pre-fix behavior) since no ordering decision is possible.
+ */
 export async function upsertProSubscriber(
   email: string,
   subscriptionId: string,
   status: string,
   customerId: string | null,
+  eventAt: Date | null,
 ): Promise<void> {
   const client = sql();
   if (!client) {
@@ -35,14 +53,19 @@ export async function upsertProSubscriber(
   }
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedStatus = status.trim().toLowerCase();
+  const eventAtIso = eventAt ? eventAt.toISOString() : null;
   await client`
-    INSERT INTO pro_subscribers (email, dodo_subscription_id, status, dodo_customer_id, updated_at)
-    VALUES (${normalizedEmail}, ${subscriptionId}, ${normalizedStatus}, ${customerId}, now())
+    INSERT INTO pro_subscribers (email, dodo_subscription_id, status, dodo_customer_id, event_at, updated_at)
+    VALUES (${normalizedEmail}, ${subscriptionId}, ${normalizedStatus}, ${customerId}, ${eventAtIso}, now())
     ON CONFLICT (email) DO UPDATE
       SET dodo_subscription_id = excluded.dodo_subscription_id,
           status = excluded.status,
           dodo_customer_id = COALESCE(excluded.dodo_customer_id, pro_subscribers.dodo_customer_id),
+          event_at = COALESCE(excluded.event_at, pro_subscribers.event_at),
           updated_at = now()
+      WHERE excluded.event_at IS NULL
+         OR pro_subscribers.event_at IS NULL
+         OR excluded.event_at >= pro_subscribers.event_at
   `;
 }
 
