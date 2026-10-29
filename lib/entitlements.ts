@@ -38,6 +38,32 @@ function sql() {
  * blindly trusting arrival order. null is accepted for payloads that omit a
  * parseable timestamp, in which case the event is applied unconditionally
  * (the prior, pre-fix behavior) since no ordering decision is possible.
+ *
+ * Second, distinct guard (found live, 2026-10-29, same day as the above):
+ * `pro_subscribers` is keyed by email only, with no check that an incoming
+ * event's `subscription_id` is the SAME subscription whose state is actually
+ * being tracked. Reproduced live against this exact table pre-fix: a real
+ * "subscription.active" webhook for email X / subscription A (a real, paying
+ * Pro customer) lands first; a real, totally UNRELATED "subscription.failed"
+ * webhook for the SAME email X but a DIFFERENT subscription B (e.g. a stray
+ * mandate-creation failure from someone — or an attacker — merely typing that
+ * email into a fresh, abandoned checkout) lands second with a later top-level
+ * `timestamp`. Pre-fix, the second event passed the ordering check above (it
+ * really is later) and overwrote the row wholesale — `dodo_subscription_id`
+ * became B, `status` became "failed", and `/api/pro/claim` + `/api/pro/portal`
+ * immediately started reporting that real, still-paying customer as not
+ * entitled, with their billing-portal customer id silently swapped out too.
+ * Any later event for an unrelated subscription_id tied to the same email —
+ * failed, cancelled, or otherwise — could knock out an active subscriber's
+ * row this way; nothing about it required the attacker to know anything the
+ * email's owner didn't already make public by subscribing. Fixed by only
+ * letting an event update the row when either (a) its subscription_id is the
+ * one already on file (the same subscription continuing its real lifecycle —
+ * normal renewals/cancellations/on-hold/etc. all keep one fixed subscription_id
+ * per Dodo's own docs) or (b) the row isn't currently entitled anyway (so
+ * there's no live paid subscription left to protect, and adopting a new
+ * subscription_id — e.g. a genuine resubscribe after a real cancellation — is
+ * safe). A brand new email (no existing row) is unaffected either way.
  */
 export async function upsertProSubscriber(
   email: string,
@@ -63,9 +89,15 @@ export async function upsertProSubscriber(
           dodo_customer_id = COALESCE(excluded.dodo_customer_id, pro_subscribers.dodo_customer_id),
           event_at = COALESCE(excluded.event_at, pro_subscribers.event_at),
           updated_at = now()
-      WHERE excluded.event_at IS NULL
-         OR pro_subscribers.event_at IS NULL
-         OR excluded.event_at >= pro_subscribers.event_at
+      WHERE (
+              pro_subscribers.dodo_subscription_id = excluded.dodo_subscription_id
+              OR pro_subscribers.status NOT IN ('active', 'past_due') -- keep in sync with ENTITLED_STATUSES above
+            )
+        AND (
+              excluded.event_at IS NULL
+              OR pro_subscribers.event_at IS NULL
+              OR excluded.event_at >= pro_subscribers.event_at
+            )
   `;
 }
 
