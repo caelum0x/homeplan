@@ -34,3 +34,10 @@ export const PRO_REQUIRED_BODY = {
   message:
     "PDF and DXF export are part of HomePlan Pro on this hosted site ($49/mo). Self-host HomePlan (MIT, free) for unlimited export instead, or claim Pro if you've already subscribed.",
 } as const;
+
+/** Same shape as PRO_REQUIRED_BODY, for the generate endpoint's multi-story/L-shaped gate. */
+export const GENERATE_PRO_REQUIRED_BODY = {
+  error: "pro_required",
+  message:
+    "Multi-story and L-shaped floor plans are part of HomePlan Pro on this hosted site ($49/mo). Self-host HomePlan (MIT, free) for unlimited multi-story/L-shaped generation instead, or claim Pro if you've already subscribed.",
+} as const;

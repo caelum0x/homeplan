@@ -43,9 +43,10 @@ export function PricingCta() {
     <section className="card" style={{ marginTop: 48, marginBottom: 24, padding: 28 }}>
       <h2 style={{ fontSize: 22, fontWeight: 650, marginBottom: 6 }}>HomePlan Pro — $49/mo</h2>
       <p style={{ fontSize: 13.5, color: "var(--color-ink-soft)", marginBottom: 16, maxWidth: 520 }}>
-        Generate, edit in Studio, view in 3D, and export PNG — all free and unlimited here, and
-        everything is free and self-hostable (MIT) if you run your own instance. Pro unlocks PDF
-        and DXF export on this hosted site, plus priority support and early access to new features.
+        Single-story rectangular layouts, editing in Studio, 3D view, and PNG export — all free
+        and unlimited here, and everything is free and self-hostable (MIT) if you run your own
+        instance. Pro unlocks multi-story plans, L-shaped footprints, and PDF/DXF export on this
+        hosted site, plus priority support and early access to new features.
       </p>
       <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input

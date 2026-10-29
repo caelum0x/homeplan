@@ -94,7 +94,9 @@ export default function Home() {
   // kept in sync with floors[activeFloor] by updatePlan so edits on one floor survive switching.
   const [floors, setFloors] = useState<FloorPlan[] | null>(null);
   const [activeFloor, setActiveFloor] = useState(0);
-  const [exportUpgradeNeeded, setExportUpgradeNeeded] = useState(false);
+  // Shared between the export gate (PDF/DXF) and the generate gate (multi-story/L-shaped) — both
+  // 402 the same way, so the same "Get Pro / Claim access" prompt applies to either.
+  const [proUpgradeNeeded, setProUpgradeNeeded] = useState(false);
 
   const heroBedCount = heroExample.rooms.filter((r) => r.type === "bedroom" || r.type === "primary_bedroom").length;
   const heroBathCount = heroExample.rooms.filter((r) => r.type === "bath" || r.type === "primary_bath" || r.type === "half_bath").length;
@@ -119,7 +121,9 @@ export default function Home() {
       .catch(() => setProStatus({ isPro: false, hosted: false }));
   }, []);
 
-  const exportGated = Boolean(proStatus?.hosted && !proStatus?.isPro);
+  // True on the hosted deployment for any visitor without a verified Pro session — drives the
+  // "Pro" hints on export buttons and on the multi-story/L-shaped toggles. Always false on self-host.
+  const proGated = Boolean(proStatus?.hosted && !proStatus?.isPro);
   const effectiveStories = storiesChoice ?? parseDescription(description).stories ?? 1;
   // L-shaped massing is single-story-only v1 (lib/layout/multiStory.ts never reads it) — the
   // toggle only has an effect (and only shows as available) when 1 story is selected.
@@ -148,6 +152,7 @@ export default function Home() {
     event.preventDefault();
     setStage("loading");
     setError(null);
+    setProUpgradeNeeded(false);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -160,7 +165,8 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Something went wrong.");
+        if (res.status === 402) setProUpgradeNeeded(true);
+        setError(data.message ?? data.error ?? "Something went wrong.");
         setResult(null);
         loadSinglePlan(null);
         setStage("idle");
@@ -188,7 +194,7 @@ export default function Home() {
     if (!plan) return;
     setExporting(format);
     setError(null);
-    setExportUpgradeNeeded(false);
+    setProUpgradeNeeded(false);
     // Multi-story: PDF gets every floor as its own page (one document, shared scale); PNG/DXF
     // export the floor currently shown, named after it, so each floor can be downloaded separately.
     const floorSuffix = floors ? `-floor-${activeFloor + 1}` : "";
@@ -197,7 +203,7 @@ export default function Home() {
       else if (format === "pdf" && floors) await downloadExport({ floors }, "pdf", `homeplan-${floors.length}-story-floor-plans.pdf`);
       else await downloadExport({ plan }, format, `homeplan-floor-plan${floorSuffix}.${format}`);
     } catch (err) {
-      if (err instanceof ProRequiredError) setExportUpgradeNeeded(true);
+      if (err instanceof ProRequiredError) setProUpgradeNeeded(true);
       setError(err instanceof Error ? err.message : `Could not export ${format.toUpperCase()}.`);
     } finally {
       setExporting(null);
@@ -405,7 +411,7 @@ export default function Home() {
                       className={`segmented-btn ${effectiveStories === n ? "active" : ""}`}
                       aria-pressed={effectiveStories === n}
                     >
-                      {n === 1 ? "1 story" : "2 stories"}
+                      {n === 1 ? "1 story" : `2 stories${proGated ? " (Pro)" : ""}`}
                     </button>
                   ))}
                 </div>
@@ -418,7 +424,7 @@ export default function Home() {
                     aria-pressed={effectiveLShaped}
                     title="Private bedroom wing steps in from the main block instead of a flat rectangle"
                   >
-                    L-shaped
+                    {proGated ? "L-shaped (Pro)" : "L-shaped"}
                   </button>
                 )}
                 <button type="submit" className="btn btn-primary" disabled={stage === "loading" || description.trim().length < 5}>
@@ -445,7 +451,7 @@ export default function Home() {
             <AlertIcon />
             <span>
               {error}
-              {exportUpgradeNeeded && (
+              {proUpgradeNeeded && (
                 <>
                   {" "}
                   <a href="#pricing">Get HomePlan Pro</a> or already subscribed? <a href="/pro/access">Claim access</a>.
@@ -561,11 +567,11 @@ export default function Home() {
                 </button>
                 <button type="button" onClick={() => handleExport("pdf")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
                   <DownloadIcon />
-                  {exporting === "pdf" ? "Exporting…" : `${floors ? `PDF (${floors.length} floors)` : "PDF"}${exportGated ? " · Pro" : ""}`}
+                  {exporting === "pdf" ? "Exporting…" : `${floors ? `PDF (${floors.length} floors)` : "PDF"}${proGated ? " · Pro" : ""}`}
                 </button>
                 <button type="button" onClick={() => handleExport("dxf")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
                   <DownloadIcon />
-                  {exporting === "dxf" ? "Exporting…" : exportGated ? "DXF (Pro)" : "DXF"}
+                  {exporting === "dxf" ? "Exporting…" : proGated ? "DXF (Pro)" : "DXF"}
                 </button>
               </div>
             </div>
@@ -637,13 +643,15 @@ export default function Home() {
 
         <div id="features" className="feature-grid">
           <FeatureCard icon={<SparkleIcon />} title="Generate">
-            Describe bedrooms, baths, and square footage. Get three real layouts instantly.
+            {proGated
+              ? "1-story, rectangular layouts are free and unlimited here. Multi-story and L-shaped footprints are part of HomePlan Pro — fully free if you self-host."
+              : "Describe bedrooms, baths, and square footage, including multi-story and L-shaped. Get three real layouts instantly."}
           </FeatureCard>
           <FeatureCard icon={<EditPencilIcon />} title="Edit">
             Drag rooms in Studio, or type a change in plain language.
           </FeatureCard>
           <FeatureCard icon={<DownloadIcon />} title="Export">
-            {exportGated
+            {proGated
               ? "PNG, 3D massing, and style moodboards are free and unlimited here. PDF and DXF export are part of HomePlan Pro on this hosted site — fully free if you self-host."
               : "PDF, DXF, PNG, 3D massing, and style moodboards — all free, unlimited."}
           </FeatureCard>

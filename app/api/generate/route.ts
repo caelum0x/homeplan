@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { parseDescription } from "@/lib/parseDescription";
 import { generateFloorPlanOptions } from "@/lib/layout/generate";
 import { generateMultiStoryOptions } from "@/lib/layout/multiStory";
+import { isProRequest, GENERATE_PRO_REQUIRED_BODY } from "@/lib/proGate";
 
 interface GenerateRequestBody {
   description?: unknown;
@@ -40,6 +41,16 @@ export async function POST(request: Request) {
   const parsed = parseDescription(description);
   let input = body.stories === undefined ? parsed : { ...parsed, stories: body.stories as 1 | 2 };
   if (body.lShaped !== undefined) input = { ...input, lShaped: body.lShaped as boolean };
+
+  // Multi-story and L-shaped massing are Pro features on the hosted deployment. Gated on the
+  // *final* resolved input, not just the raw toggle fields in the request body — parseDescription
+  // itself detects "2-story"/"L-shaped" from free text (see lib/parseDescription.ts), so a free-tier
+  // caller could otherwise bypass the toggle gate entirely just by phrasing the brief that way.
+  // Self-host (no DATABASE_URL) is unaffected: isProRequest short-circuits to true there.
+  if ((input.stories === 2 || input.lShaped === true) && !(await isProRequest(request))) {
+    return NextResponse.json(GENERATE_PRO_REQUIRED_BODY, { status: 402 });
+  }
+
   // L-shaped massing is single-story-only v1 (see lib/layout/types.ts) — the multi-story
   // engine never reads `lShaped`, so this is a silent no-op rather than a 400 for a
   // combination the UI already prevents (the toggle only shows for the 1-story case).
