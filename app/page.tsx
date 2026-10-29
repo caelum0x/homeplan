@@ -16,7 +16,7 @@ import { BrandMark } from "@/components/BrandMark";
 import type { BriefInput, FloorPlan } from "@/lib/layout/types";
 import type { FloorPlanOption } from "@/lib/layout/generate";
 import { downloadPlanAsPng } from "@/lib/exportPng";
-import { buildShareUrl, readPlanFromLocation } from "@/lib/sharePlan";
+import { buildShareUrl, readSharedBundleFromLocation } from "@/lib/sharePlan";
 import { saveTemplate } from "@/lib/templates";
 import { parseDescription } from "@/lib/parseDescription";
 import heroExamplePlanData from "@/lib/data/heroExamplePlan.json";
@@ -102,14 +102,26 @@ export default function Home() {
   const heroBedCount = heroExample.rooms.filter((r) => r.type === "bedroom" || r.type === "primary_bedroom").length;
   const heroBathCount = heroExample.rooms.filter((r) => r.type === "bath" || r.type === "primary_bath" || r.type === "half_bath").length;
 
-  // A shared link (?plan=...) opens straight into the editor with that exact plan.
+  // A shared link (?plan=...) opens straight into the editor with that exact plan — and, for a
+  // multi-story plan, every floor it was shared with (not just whichever one was active when the
+  // link was copied; see lib/sharePlan.ts's own header for the real bug this closes).
   useEffect(() => {
-    const shared = readPlanFromLocation();
-    if (shared) {
-      loadSinglePlan(shared);
+    let cancelled = false;
+    readSharedBundleFromLocation().then((shared) => {
+      if (cancelled || !shared) return;
+      if (shared.floors) {
+        setFloors(shared.floors);
+        setActiveFloor(shared.activeFloor);
+        setPlan(shared.plan);
+      } else {
+        loadSinglePlan(shared.plan);
+      }
       setSelectedVariantLabel("Shared plan");
       setStage("editing");
-    }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Tells the UI whether PDF/DXF export is actually gated here (hosted only) and
@@ -226,7 +238,7 @@ export default function Home() {
 
   async function handleShare() {
     if (!plan) return;
-    const url = buildShareUrl(plan);
+    const url = await buildShareUrl({ plan, floors, activeFloor });
     try {
       await navigator.clipboard.writeText(url);
     } catch {
