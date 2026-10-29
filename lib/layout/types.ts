@@ -35,13 +35,21 @@ export interface Room {
   floorColor?: string;
   /**
    * Only set on "stairs" rooms (lib/layout/multiStory.ts). The actual stair flight inside the
-   * strip, relative to the room's own top edge (room.y) so it survives a Studio move: treads run
-   * along the room's long (y) axis from `start` for `length` feet. `bottomAt` says which end of
-   * the flight is the bottom step ("start" = the smaller-y end). Identical on both floors of a
-   * multi-story plan — on the ground floor it's the stair you climb, on the upper floor it's the
-   * open stairwell you arrive through. Optional so every pre-existing plan still parses.
+   * strip, relative to the room's own top-left edge (room.x/room.y) so it survives a Studio move:
+   * treads run along `axis` from `start` for `length` feet, measured from that edge. `bottomAt`
+   * says which end of the flight is the bottom step ("start" = the smaller-coordinate end along
+   * `axis`). Identical on both floors of a multi-story plan — on the ground floor it's the stair
+   * you climb, on the upper floor it's the open stairwell you arrive through. Optional so every
+   * pre-existing plan still parses.
+   *
+   * `axis` defaults to "y" (every freshly-generated plan's own convention — the flight always
+   * runs along the room's depth) when absent, so pre-existing plans/share links still render
+   * exactly as before. It only ever becomes "x" after lib/layout/lotFit.ts rotates a multi-story
+   * plan by 90/270 degrees to fit a lot, which swaps which global axis the flight travels along —
+   * see that file's transformStairRun for the real geometry that derives it, never carried over
+   * unchanged.
    */
-  stairRun?: { start: number; length: number; bottomAt: "start" | "end"; floor: "lower" | "upper" };
+  stairRun?: { start: number; length: number; bottomAt: "start" | "end"; floor: "lower" | "upper"; axis?: "x" | "y" };
 }
 
 export type FurnitureType =

@@ -204,8 +204,12 @@ function stairRoomToSvg(room: Room, stair: NonNullable<ReturnType<typeof stairGr
     `<text x="${toPx(stair.labelAt.x)}" y="${toPx(stair.labelAt.y) + 3}" text-anchor="middle" font-size="8" font-weight="700" fill="#4a4030">${stair.label}</text>`,
   ];
   if (stair.nameAt.span >= 4) {
+    // Only a vertical ("y"-axis) strip needs the label rotated to run along it — a horizontal
+    // ("x"-axis) strip, which only happens after lib/layout/lotFit.ts rotates a multi-story plan
+    // 90/270 degrees to fit a lot, already reads along its own long side unrotated.
+    const rotateAttr = stair.axis === "y" ? ` transform="rotate(-90 ${nameX} ${nameY})"` : "";
     parts.push(
-      `<text x="${nameX}" y="${nameY}" transform="rotate(-90 ${nameX} ${nameY})" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="600" fill="#2b2b2b">${escapeXml(room.label)} · ${room.w.toFixed(1)}' x ${room.h.toFixed(1)}'</text>`,
+      `<text x="${nameX}" y="${nameY}"${rotateAttr} text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="600" fill="#2b2b2b">${escapeXml(room.label)} · ${room.w.toFixed(1)}' x ${room.h.toFixed(1)}'</text>`,
     );
   }
   return parts.join("\n");

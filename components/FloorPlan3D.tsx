@@ -634,27 +634,46 @@ export function FloorPlan3D({
   );
 }
 
-/** See the "Stairs" comment in the scene setup above. Coordinates match every other mesh: x = plan x, z = plan y, y = up. */
+/**
+ * See the "Stairs" comment in the scene setup above. Coordinates match every other mesh: x =
+ * plan x, z = plan y, y = up. `run.axis` (default "y") picks which real plan axis the flight
+ * travels along — "x" only after lib/layout/lotFit.ts rotates a multi-story plan 90/270 degrees
+ * to fit a lot (see Room.stairRun's doc comment); `toXZ`/`alongAcrossBox` below remap every
+ * dimension so the geometry stays correct either way instead of assuming "y" like before.
+ */
 function buildStairObject(room: Room, run: NonNullable<Room["stairRun"]>, storyHeight: number): THREE.Object3D {
   const group = new THREE.Group();
-  const y0 = room.y + Math.max(0, run.start);
-  const y1 = Math.min(room.y + room.h, room.y + run.start + run.length);
-  const flight = y1 - y0;
+  const axis = run.axis ?? "y";
+  const alongStart = axis === "x" ? room.x : room.y;
+  const alongSize = axis === "x" ? room.w : room.h;
+  const acrossStart = axis === "x" ? room.y : room.x;
+  const acrossSize = axis === "x" ? room.h : room.w;
+  const toXZ = (along: number, across: number): { x: number; z: number } =>
+    axis === "x" ? { x: along, z: across } : { x: across, z: along };
+  // A box's (x,z) footprint size swaps the same way: whichever plan axis "along"/"across" map to.
+  const alongAcrossBox = (alongLen: number, acrossLen: number): [number, number] =>
+    axis === "x" ? [alongLen, acrossLen] : [acrossLen, alongLen];
+
+  const a0 = alongStart + Math.max(0, run.start);
+  const a1 = Math.min(alongStart + alongSize, alongStart + run.start + run.length);
+  const flight = a1 - a0;
   if (flight <= 0.1) return group;
   const treads = STAIR_RISERS - 1;
   const treadDepth = flight / treads;
   const riser = storyHeight / STAIR_RISERS;
-  const cx = room.x + room.w / 2;
-  const width = room.w - 0.3;
+  const acrossCenter = acrossStart + acrossSize / 2;
+  const width = acrossSize - 0.3;
 
   if (run.floor === "lower") {
     const mat = new THREE.MeshStandardMaterial({ color: 0xb8925f, roughness: 0.7 });
     for (let i = 0; i < treads; i++) {
       // i = 0 is the bottom step; it sits at whichever end of the flight `bottomAt` names.
-      const fromBottom = run.bottomAt === "start" ? y0 + i * treadDepth : y1 - (i + 1) * treadDepth;
+      const fromBottom = run.bottomAt === "start" ? a0 + i * treadDepth : a1 - (i + 1) * treadDepth;
       const height = (i + 1) * riser;
-      const step = new THREE.Mesh(new THREE.BoxGeometry(width, height, treadDepth), mat);
-      step.position.set(cx, 0.2 + height / 2, fromBottom + treadDepth / 2);
+      const [xSize, zSize] = alongAcrossBox(treadDepth, width);
+      const step = new THREE.Mesh(new THREE.BoxGeometry(xSize, height, zSize), mat);
+      const center = toXZ(fromBottom + treadDepth / 2, acrossCenter);
+      step.position.set(center.x, 0.2 + height / 2, center.z);
       step.castShadow = true;
       step.receiveShadow = true;
       group.add(step);
@@ -662,20 +681,26 @@ function buildStairObject(room: Room, run: NonNullable<Room["stairRun"]>, storyH
     return group;
   }
 
+  const [voidX, voidZ] = alongAcrossBox(flight, width);
   const voidMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(width, 0.05, flight),
+    new THREE.BoxGeometry(voidX, 0.05, voidZ),
     new THREE.MeshStandardMaterial({ color: 0x3a342b, roughness: 1 }),
   );
-  voidMesh.position.set(cx, 0.23, (y0 + y1) / 2);
+  const voidCenter = toXZ((a0 + a1) / 2, acrossCenter);
+  voidMesh.position.set(voidCenter.x, 0.23, voidCenter.z);
   group.add(voidMesh);
   const railMat = new THREE.MeshStandardMaterial({ color: 0x6b5a43, roughness: 0.6 });
-  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, flight), railMat);
-  rail.position.set(room.x + room.w - 0.15, 3, (y0 + y1) / 2);
+  const railEdge = acrossStart + acrossSize - 0.15;
+  const [railX, railZ] = alongAcrossBox(flight, 0.12);
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(railX, 0.12, railZ), railMat);
+  const railCenter = toXZ((a0 + a1) / 2, railEdge);
+  rail.position.set(railCenter.x, 3, railCenter.z);
   group.add(rail);
   const posts = Math.max(2, Math.round(flight / 2));
   for (let i = 0; i <= posts; i++) {
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.8, 0.1), railMat);
-    post.position.set(room.x + room.w - 0.15, 0.2 + 1.4, y0 + (flight * i) / posts);
+    const postCenter = toXZ(a0 + (flight * i) / posts, railEdge);
+    post.position.set(postCenter.x, 0.2 + 1.4, postCenter.z);
     group.add(post);
   }
   return group;

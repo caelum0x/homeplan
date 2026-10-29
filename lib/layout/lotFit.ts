@@ -5,8 +5,11 @@
 // from its actual wall geometry, including L-shape/garage/courtyard notches — not a bounding
 // box) fits inside the setback-eroded buildable area, at which of the 4 structurally-safe
 // cardinal rotations, and at what real position, then applies that exact rigid transform to
-// every room/wall/door/window/furniture coordinate so the result is a fully normal, fully
-// compatible FloorPlan (Studio/3D/export/chat-edit all keep working unmodified on it).
+// every room/wall/door/window/furniture coordinate (incl. a multi-story plan's stairRun, which
+// needs its own rotation-aware re-derivation — see transformStairRun below — rather than a plain
+// point transform, since it swaps which global axis the flight travels along) so the result is a
+// fully normal, fully compatible FloorPlan (Studio/3D/export/chat-edit all keep working
+// unmodified on it).
 //
 // Deliberate scope boundary, decided up front and kept honest throughout this file: rotation is
 // restricted to exact 0/90/180/270-degree steps, and there is no uniform-scale "shrink to fit"
@@ -383,7 +386,55 @@ function transformRoom(room: Room, transform: Transform): Room {
   const y = Math.min(p1.y, p2.y);
   const w = Math.abs(p2.x - p1.x);
   const h = Math.abs(p2.y - p1.y);
-  return { ...room, x, y, w, h, areaSqft: round1(w * h) };
+  const base: Room = { ...room, x, y, w, h, areaSqft: round1(w * h) };
+  if (room.type === "stairs" && room.stairRun) {
+    return { ...base, stairRun: transformStairRun(room, transform, { x, y }) };
+  }
+  return base;
+}
+
+/**
+ * Re-derives a "stairs" room's `stairRun` from real geometry after a rigid rotation+translation,
+ * instead of carrying the old start/length/axis numbers over unchanged — the real gap this file's
+ * lot-fit pass originally scoped out (multi-story plans were rejected outright; see
+ * plans/homeplan.md). A 90/270-degree rotation swaps which global axis the flight travels along
+ * (stairRun has always assumed the room's own y-axis — see Room.stairRun's doc comment in
+ * layout/types.ts), so the stored numbers, and even which end is the "start" vs "end" labelled
+ * end, stop matching the new room rectangle unless recomputed from the real transformed
+ * endpoints. Same technique as transformHingeSide above: convert the real geometry (here, the
+ * flight's two endpoints) through the actual transform, then re-read off which label applies in
+ * the new frame — never assume a relative label survives unchanged (verified numerically in
+ * scripts/verify-lot-fit.ts, the same rigor used there for door hinges).
+ */
+function transformStairRun(room: Room, transform: Transform, newOrigin: Point): NonNullable<Room["stairRun"]> {
+  const run = room.stairRun!;
+  // Canonical pre-transform endpoints of the flight centerline: stairRun has always been
+  // generated running along the room's own y-axis (lib/layout/multiStory.ts), centered across
+  // its width, with `start` always the smaller-coordinate end by construction (0 <= start <=
+  // start+length <= room.h).
+  const across = room.x + room.w / 2;
+  const low = transform({ x: across, y: room.y + run.start });
+  const high = transform({ x: across, y: room.y + run.start + run.length });
+  const dx = high.x - low.x;
+  const dy = high.y - low.y;
+  // Exactly one of dx/dy survives a 90-degree-step rotation (the translation cancels out between
+  // the two endpoints) — pick whichever axis now actually carries the flight.
+  const axis: "x" | "y" = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+  const lowIsStillLow = axis === "x" ? low.x <= high.x : low.y <= high.y;
+  const lowPoint = lowIsStillLow ? low : high;
+  const highPoint = lowIsStillLow ? high : low;
+  const length = axis === "x" ? highPoint.x - lowPoint.x : highPoint.y - lowPoint.y;
+  // `bottomAt` names which geometric end holds the bottom step; under the original construction
+  // that end was always `run.bottomAt === "start"` <=> the pre-transform low end. Re-derive which
+  // numeric end (possibly flipped by the rotation) it maps to now, instead of assuming it carries
+  // over.
+  const bottomWasLowEnd = run.bottomAt === "start";
+  const bottomIsNowLowEnd = bottomWasLowEnd === lowIsStillLow;
+  const start = axis === "x" ? lowPoint.x - newOrigin.x : lowPoint.y - newOrigin.y;
+  // No rounding here (unlike areaSqft above, a cosmetic display value): start/length are real
+  // geometry other code measures distances against (lib/stairs.ts, FloorPlan3D.tsx), exactly like
+  // room x/y/w/h themselves are left at full rigid-transform precision.
+  return { ...run, start, length, bottomAt: bottomIsNowLowEnd ? "start" : "end", axis };
 }
 
 function transformWall(wall: Wall, transform: Transform): Wall {
@@ -547,9 +598,6 @@ function failResult(lot: Polygon, error: string, extra?: Partial<LotFitResult>):
 export function fitPlanToLot(plan: FloorPlan, lotInput: Polygon, setbackFt: number): LotFitResult {
   if (!Array.isArray(lotInput) || lotInput.length < 3) {
     return failResult(lotInput ?? [], "A lot boundary needs at least 3 points.");
-  }
-  if (plan.rooms.some((r) => r.type === "stairs")) {
-    return failResult(lotInput, "Lot fitting doesn't yet support multi-story plans — fit each floor's footprint as its own single-story plan instead.");
   }
 
   const lot = ensureCCW(lotInput);

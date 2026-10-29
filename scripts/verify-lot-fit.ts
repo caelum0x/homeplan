@@ -13,6 +13,9 @@ import {
   LOT_PRESETS,
 } from "../lib/layout/lotFit";
 import { computeDoorSwings, resolveDoorSwingGeometry } from "../lib/layout/doorSwings";
+import { generateMultiStoryPlan } from "../lib/layout/multiStory";
+import { stairGraphics } from "../lib/stairs";
+import { STAIR_RISERS } from "../lib/layout/stairSpec";
 import type { Room, FloorPlan } from "../lib/layout/types";
 
 let failures = 0;
@@ -192,7 +195,149 @@ console.log("\n=== 8. Rotation correctness: door hinge/swing geometry survives a
   }
 }
 
-console.log("\n=== 9. Every LOT_PRESETS entry is a valid simple polygon with positive area ===");
+console.log("\n=== 9. Multi-story plans are no longer rejected, and a forced rotation transforms stairRun exactly (not carried over) ===");
+{
+  // No garage on purpose: a garage only ever attaches to the GROUND floor (lib/layout/
+  // multiStory.ts), which makes its real exterior silhouette genuinely different from the upper
+  // floor's (an L-shape vs a plain rectangle) even though both report the same bounding-box
+  // `footprint` metadata — so a garage-equipped plan legitimately CAN fit each floor at a
+  // different orientation, and asserting floor-to-floor alignment on one would be testing a false
+  // assumption, not a real bug. Without a garage, both floors' real footprints are identical, so
+  // alignment is a real, provable invariant.
+  const briefInput = { ...parseDescription("4 bed 3 bath house, 2800 square feet, with a home office"), stories: 2 as const };
+  const { floors } = generateMultiStoryPlan(briefInput);
+  const [ground, upper] = floors;
+  check("sanity: this brief has no garage, so ground/upper floors share one real footprint", !ground.rooms.some((r) => r.type === "garage"));
+  check("ground floor has a real stairs room with a stairRun", ground.rooms.some((r) => r.type === "stairs" && r.stairRun));
+
+  // 9a. Plenty-of-room lot: no longer rejected outright, and both floors (independently fit
+  // against the same lot/setback) pick the same orientation since they share one real footprint.
+  const roomyLot = [
+    { x: 0, y: 0 },
+    { x: ground.footprint.w + 20, y: 0 },
+    { x: ground.footprint.w + 20, y: ground.footprint.h + 20 },
+    { x: 0, y: ground.footprint.h + 20 },
+  ];
+  const groundRoomyFit = fitPlanToLot(ground, roomyLot, 2);
+  const upperRoomyFit = fitPlanToLot(upper, roomyLot, 2);
+  check("ground floor multi-story plan no longer rejected by lot fitting", groundRoomyFit.feasible, groundRoomyFit.error ?? undefined);
+  check("upper floor multi-story plan no longer rejected by lot fitting", upperRoomyFit.feasible, upperRoomyFit.error ?? undefined);
+  check(
+    "both floors picked the same orientation (shared footprint keeps them aligned)",
+    groundRoomyFit.orientationDeg === upperRoomyFit.orientationDeg,
+    `${groundRoomyFit.orientationDeg} vs ${upperRoomyFit.orientationDeg}`,
+  );
+
+  // 9b. Force a 90/270deg rotation (narrow-but-deep lot) and prove stairRun survives exactly —
+  // same rigor as scenario 8's door-hinge proof: reconstruct the exact rigid transform from the
+  // front door alone, then confirm the stairs flight's own endpoints (recomputed by
+  // transformStairRun, not carried over) match that same transform applied to the original.
+  // (unlike scenario 2/8's plan, this one may already be deeper than it is wide — the swapped-
+  // dimension lot below forces a real rotation either way, same technique, no orientation assumed.)
+  const narrowDeepLot = [
+    { x: 0, y: 0 },
+    { x: ground.footprint.h + 2, y: 0 },
+    { x: ground.footprint.h + 2, y: ground.footprint.w + 2 },
+    { x: 0, y: ground.footprint.w + 2 },
+  ];
+  const groundRotated = fitPlanToLot(ground, narrowDeepLot, 0);
+  check("rotation forced successfully", groundRotated.feasible && groundRotated.orientationDeg !== 0, `orientation=${groundRotated.orientationDeg}`);
+
+  if (groundRotated.plan) {
+    const origStairs = ground.rooms.find((r) => r.type === "stairs")!;
+    const fitStairs = groundRotated.plan.rooms.find((r) => r.type === "stairs")!;
+    check("fitted stairs room still carries a stairRun", !!fitStairs.stairRun);
+
+    if (fitStairs.stairRun && origStairs.stairRun) {
+      const k = (groundRotated.orientationDeg ?? 0) / 90;
+      const origFront = ground.doors.find((d) => d.id === "front_door")!;
+      const fitFront = groundRotated.plan.doors.find((d) => d.id === "front_door")!;
+      const rotatedFront = rotate90({ x: origFront.x, y: origFront.y }, k);
+      const offset = { x: fitFront.x - rotatedFront.x, y: fitFront.y - rotatedFront.y };
+      const tf = (p: { x: number; y: number }) => {
+        const r = rotate90(p, k);
+        return { x: r.x + offset.x, y: r.y + offset.y };
+      };
+      const close = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01;
+
+      const origRun = origStairs.stairRun;
+      const origCx = origStairs.x + origStairs.w / 2;
+      const origLow = { x: origCx, y: origStairs.y + origRun.start };
+      const origHigh = { x: origCx, y: origStairs.y + origRun.start + origRun.length };
+      const expectedLow = tf(origLow);
+      const expectedHigh = tf(origHigh);
+
+      const fitRun = fitStairs.stairRun;
+      const axis = fitRun.axis ?? "y";
+      const fitCx = fitStairs.x + fitStairs.w / 2;
+      const fitCy = fitStairs.y + fitStairs.h / 2;
+      const actualLow = axis === "x" ? { x: fitStairs.x + fitRun.start, y: fitCy } : { x: fitCx, y: fitStairs.y + fitRun.start };
+      const actualHigh =
+        axis === "x" ? { x: fitStairs.x + fitRun.start + fitRun.length, y: fitCy } : { x: fitCx, y: fitStairs.y + fitRun.start + fitRun.length };
+
+      const matchesForward = close(expectedLow, actualLow) && close(expectedHigh, actualHigh);
+      const matchesSwapped = close(expectedLow, actualHigh) && close(expectedHigh, actualLow);
+      check(
+        "stairRun's real flight endpoints match the exact rigid transform of the original (recomputed, not carried over)",
+        matchesForward || matchesSwapped,
+        `expected ${JSON.stringify(expectedLow)}..${JSON.stringify(expectedHigh)} got ${JSON.stringify(actualLow)}..${JSON.stringify(actualHigh)}`,
+      );
+      check("axis flips to 'x' under a 90/270deg rotation (flight no longer runs along the room's own y-axis)", axis === "x", `axis=${axis}`);
+      check("flight length preserved exactly across the rotation", Math.abs(fitRun.length - origRun.length) < 0.01, `${fitRun.length} vs ${origRun.length}`);
+
+      // `bottomAt` must still name whichever geometric end is the real bottom step, not whichever
+      // numeric end it happened to be labelled before rotation.
+      const origBottomPoint = origRun.bottomAt === "start" ? origLow : origHigh;
+      const expectedBottom = tf(origBottomPoint);
+      const actualBottomPoint = fitRun.bottomAt === "start" ? actualLow : actualHigh;
+      check("bottomAt still names the same real bottom-step end after rotation", close(expectedBottom, actualBottomPoint));
+    }
+
+    // stairGraphics must still render real, non-collapsed geometry on the rotated room — the
+    // actual bug this fix closes (a naive point-only transform would leave stairRun's numbers
+    // pinned to the old y-axis, clamping the flight down to the room's new, much shorter height).
+    const graphics = stairGraphics(fitStairs);
+    check("stairGraphics still returns real geometry on the rotated stairs room (not clamped away by the axis mismatch)", !!graphics);
+    if (graphics) {
+      check("rotated flight still has the full tread count", graphics.treads.length === STAIR_RISERS, `${graphics.treads.length} treads, expected ${STAIR_RISERS}`);
+      const flightLen = Math.hypot(graphics.treads[graphics.treads.length - 1].x1 - graphics.treads[0].x1, graphics.treads[graphics.treads.length - 1].y1 - graphics.treads[0].y1);
+      check("rotated flight spans its real length, not squashed into the room's short dimension", flightLen > 10, `flightLen=${flightLen.toFixed(2)}`);
+    }
+
+    const normalized = normalizePlanToOrigin(groundRotated.plan);
+    check("normalizePlanToOrigin still carries the stairs room through", normalized.rooms.some((r) => r.type === "stairs" && r.stairRun));
+  }
+
+  // 9c. Fit the upper floor against the exact same lot/setback — since both floors share one
+  // footprint, it must be forced to the identical rotation, and (critically) the two floors'
+  // stairs rects must still line up exactly so the flight/stairwell stack correctly between them.
+  const upperRotated = fitPlanToLot(upper, narrowDeepLot, 0);
+  check(
+    "upper floor forced to the same rotation as the ground floor (shared footprint keeps the stairwell aligned)",
+    upperRotated.feasible && upperRotated.orientationDeg === groundRotated.orientationDeg,
+    `${upperRotated.orientationDeg} vs ${groundRotated.orientationDeg}`,
+  );
+  if (upperRotated.plan && groundRotated.plan) {
+    const groundStairsFit = groundRotated.plan.rooms.find((r) => r.type === "stairs")!;
+    const upperStairsFit = upperRotated.plan.rooms.find((r) => r.type === "stairs")!;
+    const rectClose =
+      Math.abs(groundStairsFit.x - upperStairsFit.x) < 0.01 &&
+      Math.abs(groundStairsFit.y - upperStairsFit.y) < 0.01 &&
+      Math.abs(groundStairsFit.w - upperStairsFit.w) < 0.01 &&
+      Math.abs(groundStairsFit.h - upperStairsFit.h) < 0.01;
+    check(
+      "ground and upper floor stairs rects still line up exactly after independently fitting both floors",
+      rectClose,
+      `${JSON.stringify({ x: groundStairsFit.x, y: groundStairsFit.y, w: groundStairsFit.w, h: groundStairsFit.h })} vs ${JSON.stringify({ x: upperStairsFit.x, y: upperStairsFit.y, w: upperStairsFit.w, h: upperStairsFit.h })}`,
+    );
+    check(
+      "both floors' stairRun axis flipped the same way",
+      (groundStairsFit.stairRun?.axis ?? "y") === (upperStairsFit.stairRun?.axis ?? "y"),
+    );
+  }
+}
+
+console.log("\n=== 10. Every LOT_PRESETS entry is a valid simple polygon with positive area ===");
 for (const preset of LOT_PRESETS) {
   const area = polygonArea(preset.points);
   check(`preset "${preset.label}" has positive area`, area > 10, `area=${area}`);

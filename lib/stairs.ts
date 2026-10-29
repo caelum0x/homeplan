@@ -30,55 +30,90 @@ export interface StairGraphics {
    * clips any horizontal label longer than ~7 characters).
    */
   nameAt: { x: number; y: number; span: number };
+  /**
+   * Which real axis the flight travels along ("y" = vertical, the default for every freshly-
+   * generated plan; "x" = horizontal, only after lib/layout/lotFit.ts rotates a multi-story plan
+   * 90/270 degrees — see Room.stairRun's doc comment). A renderer that rotates `nameAt`'s label
+   * text to run along the strip (lib/renderSvg.ts, lib/exportPdf.ts) only needs that rotation
+   * when `axis === "y"`; an "x"-axis strip already reads along its long side unrotated.
+   */
+  axis: "x" | "y";
 }
 
 /** Null for any room that isn't a stair or predates `stairRun` (old share links/templates). */
 export function stairGraphics(room: Room): StairGraphics | null {
   if (room.type !== "stairs" || !room.stairRun) return null;
   const { start, length, bottomAt, floor } = room.stairRun;
-  // Clamp to the room so a Studio resize that shortens the strip never draws treads outside it.
-  const y0 = room.y + Math.max(0, start);
-  const y1 = Math.min(room.y + room.h, room.y + start + length);
-  if (y1 - y0 <= 0.1) return null;
+  const axis = room.stairRun.axis ?? "y";
+  // "along" is the axis the flight travels/the room is long on; "across" is the flight's width.
+  const roomAlongStart = axis === "x" ? room.x : room.y;
+  const roomAlongSize = axis === "x" ? room.w : room.h;
+  const roomAcrossStart = axis === "x" ? room.y : room.x;
+  const roomAcrossSize = axis === "x" ? room.h : room.w;
+  const toPoint = (along: number, across: number): { x: number; y: number } =>
+    axis === "x" ? { x: along, y: across } : { x: across, y: along };
 
-  const inset = Math.min(0.4, room.w * 0.1);
-  const left = room.x + inset;
-  const right = room.x + room.w - inset;
+  // Clamp to the room so a Studio resize that shortens the strip never draws treads outside it.
+  const a0 = roomAlongStart + Math.max(0, start);
+  const a1 = Math.min(roomAlongStart + roomAlongSize, roomAlongStart + start + length);
+  if (a1 - a0 <= 0.1) return null;
+
+  const inset = Math.min(0.4, roomAcrossSize * 0.1);
+  const acrossLow = roomAcrossStart + inset;
+  const acrossHigh = roomAcrossStart + roomAcrossSize - inset;
   const treadCount = STAIR_RISERS - 1;
   const treads: PlanSegment[] = [];
   for (let i = 0; i <= treadCount; i++) {
-    const y = y0 + ((y1 - y0) * i) / treadCount;
-    treads.push({ x1: left, y1: y, x2: right, y2: y });
+    const a = a0 + ((a1 - a0) * i) / treadCount;
+    const p1 = toPoint(a, acrossLow);
+    const p2 = toPoint(a, acrossHigh);
+    treads.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
   }
 
-  const bottomY = bottomAt === "start" ? y0 : y1;
-  const topY = bottomAt === "start" ? y1 : y0;
-  const cx = room.x + room.w / 2;
+  const bottomA = bottomAt === "start" ? a0 : a1;
+  const topA = bottomAt === "start" ? a1 : a0;
+  const acrossCenter = roomAcrossStart + roomAcrossSize / 2;
   const goingUp = floor === "lower";
-  const fromY = goingUp ? bottomY : topY;
-  const toY = goingUp ? topY : bottomY;
-  const dir = Math.sign(toY - fromY) || 1;
-  const head = Math.min(0.9, room.w * 0.25);
-  const arrow = { x1: cx, y1: fromY + dir * 0.6, x2: cx, y2: toY - dir * 0.4 };
+  const fromA = goingUp ? bottomA : topA;
+  const toA = goingUp ? topA : bottomA;
+  const dir = Math.sign(toA - fromA) || 1;
+  const head = Math.min(0.9, roomAcrossSize * 0.25);
+  const arrowFrom = toPoint(fromA + dir * 0.6, acrossCenter);
+  const arrowTo = toPoint(toA - dir * 0.4, acrossCenter);
+  const arrow = { x1: arrowFrom.x, y1: arrowFrom.y, x2: arrowTo.x, y2: arrowTo.y };
+  const head1 = toPoint(toA - dir * 0.4 - dir * head, acrossCenter - head);
+  const head2 = toPoint(toA - dir * 0.4 - dir * head, acrossCenter + head);
+  const labelAt = toPoint(fromA - dir * 1.1, acrossCenter);
 
   return {
     treads,
     arrow,
     arrowHead: [
-      { x1: cx, y1: arrow.y2, x2: cx - head, y2: arrow.y2 - dir * head },
-      { x1: cx, y1: arrow.y2, x2: cx + head, y2: arrow.y2 - dir * head },
+      { x1: arrow.x2, y1: arrow.y2, x2: head1.x, y2: head1.y },
+      { x1: arrow.x2, y1: arrow.y2, x2: head2.x, y2: head2.y },
     ],
     label: goingUp ? "UP" : "DN",
-    labelAt: { x: cx, y: fromY - dir * 1.1 },
-    nameAt: longestClearStretch(room, y0, y1, cx),
+    labelAt,
+    nameAt: longestClearStretch(roomAlongStart, roomAlongSize, a0, a1, acrossCenter, toPoint),
+    axis,
   };
 }
 
-function longestClearStretch(room: Room, flightStart: number, flightEnd: number, cx: number): { x: number; y: number; span: number } {
-  const before = flightStart - room.y;
-  const after = room.y + room.h - flightEnd;
+function longestClearStretch(
+  roomAlongStart: number,
+  roomAlongSize: number,
+  flightStart: number,
+  flightEnd: number,
+  acrossCenter: number,
+  toPoint: (along: number, across: number) => { x: number; y: number },
+): { x: number; y: number; span: number } {
+  const before = flightStart - roomAlongStart;
+  const after = roomAlongStart + roomAlongSize - flightEnd;
   // Leave ~2ft for the UP/DN label sitting in the landing right next to the flight.
-  return before > after
-    ? { x: cx, y: room.y + (before - 2) / 2, span: Math.max(0, before - 2) }
-    : { x: cx, y: flightEnd + 2 + (after - 2) / 2, span: Math.max(0, after - 2) };
+  const chosen =
+    before > after
+      ? { along: roomAlongStart + (before - 2) / 2, span: Math.max(0, before - 2) }
+      : { along: flightEnd + 2 + (after - 2) / 2, span: Math.max(0, after - 2) };
+  const point = toPoint(chosen.along, acrossCenter);
+  return { x: point.x, y: point.y, span: chosen.span };
 }

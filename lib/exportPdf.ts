@@ -183,17 +183,27 @@ function drawStairs(
   drawCenteredText(page, stair.label, px(stair.labelAt.x), py(stair.labelAt.y) - 2.5, font, 6);
   if (stair.nameAt.span >= 4) {
     const text = `${room.label} · ${room.w.toFixed(1)}' x ${room.h.toFixed(1)}'`;
-    const size = Math.min(7, Math.max(5, toPt(room.w) / 4));
-    const textW = font.widthOfTextAtSize(text, size);
-    // Rotated 90° to run up the strip; centred on nameAt (pdf-lib rotates around the text origin).
-    page.drawText(text, {
-      x: px(stair.nameAt.x) + size / 3,
-      y: py(stair.nameAt.y) - textW / 2,
-      size,
-      font,
-      color: rgb(0.2, 0.2, 0.2),
-      rotate: degrees(90),
-    });
+    // The flight's across-the-width dimension sets the font size either way — room.w for a
+    // "y"-axis strip, room.h for an "x"-axis one (only after lib/layout/lotFit.ts rotates a
+    // multi-story plan 90/270 degrees — see stairGraphics' own `axis` doc comment).
+    const acrossFt = stair.axis === "y" ? room.w : room.h;
+    const size = Math.min(7, Math.max(5, toPt(acrossFt) / 4));
+    if (stair.axis === "y") {
+      const textW = font.widthOfTextAtSize(text, size);
+      // Rotated 90° to run up the strip; centred on nameAt (pdf-lib rotates around the text origin).
+      page.drawText(text, {
+        x: px(stair.nameAt.x) + size / 3,
+        y: py(stair.nameAt.y) - textW / 2,
+        size,
+        font,
+        color: rgb(0.2, 0.2, 0.2),
+        rotate: degrees(90),
+      });
+    } else {
+      // An "x"-axis strip's long side already runs left-right in page space, so the label reads
+      // naturally without rotation — center it the same way every normal room label is centered.
+      drawCenteredText(page, text, px(stair.nameAt.x), py(stair.nameAt.y) - size / 3, font, size);
+    }
   }
   return true;
 }

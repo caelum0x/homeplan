@@ -32,7 +32,10 @@ export function StairMarks({ room, toPx }: StairMarksProps) {
         <text
           x={nameX}
           y={nameY}
-          transform={`rotate(-90 ${nameX} ${nameY})`}
+          // Only a vertical ("y"-axis) strip needs the label rotated to run along it — an
+          // "x"-axis strip (only after lib/layout/lotFit.ts rotates a multi-story plan 90/270
+          // degrees) already reads along its own long side unrotated.
+          transform={stair.axis === "y" ? `rotate(-90 ${nameX} ${nameY})` : undefined}
           textAnchor="middle"
           dominantBaseline="middle"
           fontSize={9}
