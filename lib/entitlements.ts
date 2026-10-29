@@ -146,6 +146,27 @@ export type ClaimRateLimitResult = { readonly limited: false } | { readonly limi
  * own threshold inside a rolling window, so mass guessing/enumeration is no longer
  * free — a single legitimate user re-confirming access on a new device still gets
  * through untouched.
+ *
+ * Real bug found+reproduced live (2026-10-29, same day this limiter shipped in
+ * b64f88f): the original version read both counts with a plain SELECT, then did a
+ * separate INSERT — two independent round trips with no lock between them, so
+ * concurrent callers could all read the same pre-insert count and all pass the
+ * check before any of their own inserts had landed. Reproduced directly against
+ * this exact table/function: 30 concurrent calls for one never-before-seen email
+ * (CLAIM_MAX_PER_EMAIL = 15) returned 30/30 allowed, 0 blocked — the limiter this
+ * function exists to provide was completely bypassable by an attacker simply
+ * firing requests in parallel instead of serially, which is a strictly *easier*
+ * attack than the sequential one the limiter was built to stop. Fixed by moving
+ * the whole count-then-insert into one real Postgres transaction (neon's
+ * `client.transaction()` batches multiple statements into a single HTTP round
+ * trip) guarded by two per-key advisory locks, always acquired in the same
+ * fixed order (ip, then email) across every call so concurrent callers can never
+ * deadlock on each other: a second concurrent request sharing either the same IP
+ * or the same email now genuinely blocks on `pg_advisory_xact_lock` until the
+ * first request's count-then-insert has fully committed, so the counts the final
+ * INSERT's own WHERE clause reads are never stale. The lock is scoped to this one
+ * transaction and auto-releases on commit (pg_advisory_xact_lock, not the
+ * session-lifetime pg_advisory_lock).
  */
 export async function checkAndRecordClaimAttempt(email: string, ip: string): Promise<ClaimRateLimitResult> {
   const client = sql();
@@ -153,17 +174,21 @@ export async function checkAndRecordClaimAttempt(email: string, ip: string): Pro
   const normalizedEmail = email.trim().toLowerCase();
   const windowStart = new Date(Date.now() - CLAIM_WINDOW_SECONDS * 1000).toISOString();
 
-  const [emailCountRows, ipCountRows] = await Promise.all([
-    client`SELECT count(*)::int AS count FROM pro_claim_attempts WHERE email = ${normalizedEmail} AND created_at > ${windowStart}`,
-    client`SELECT count(*)::int AS count FROM pro_claim_attempts WHERE ip = ${ip} AND created_at > ${windowStart}`,
+  const results = await client.transaction([
+    client`SELECT pg_advisory_xact_lock(hashtext('homeplan_claim_ip:' || ${ip}))`,
+    client`SELECT pg_advisory_xact_lock(hashtext('homeplan_claim_email:' || ${normalizedEmail}))`,
+    client`
+      INSERT INTO pro_claim_attempts (email, ip)
+      SELECT ${normalizedEmail}, ${ip}
+      WHERE (SELECT count(*)::int FROM pro_claim_attempts WHERE email = ${normalizedEmail} AND created_at > ${windowStart}) < ${CLAIM_MAX_PER_EMAIL}
+        AND (SELECT count(*)::int FROM pro_claim_attempts WHERE ip = ${ip} AND created_at > ${windowStart}) < ${CLAIM_MAX_PER_IP}
+      RETURNING 1
+    `,
   ]);
-  const emailCount = (emailCountRows[0] as { count: number }).count;
-  const ipCount = (ipCountRows[0] as { count: number }).count;
+  const inserted = (results[2] as unknown[]).length > 0;
 
-  if (emailCount >= CLAIM_MAX_PER_EMAIL || ipCount >= CLAIM_MAX_PER_IP) {
+  if (!inserted) {
     return { limited: true, retryAfterSeconds: CLAIM_WINDOW_SECONDS };
   }
-
-  await client`INSERT INTO pro_claim_attempts (email, ip) VALUES (${normalizedEmail}, ${ip})`;
   return { limited: false };
 }
