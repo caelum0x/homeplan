@@ -63,7 +63,18 @@ export async function getProSubscriber(email: string): Promise<ProSubscriberStat
 }
 
 const CLAIM_WINDOW_SECONDS = 15 * 60;
-const CLAIM_MAX_PER_EMAIL = 5;
+// Real bug this constant fixes (found live, 2026-10-29): app/pro/success's own useAutoClaim
+// polls /api/pro/claim up to 5 times automatically right after checkout (Dodo's webhook can
+// take longer than that short burst to land). With the limit previously set to exactly 5, a
+// real paying customer whose webhook simply hadn't landed yet would have the auto-poll alone
+// consume their *entire* 15-minute budget — the moment the webhook DID land, their very next
+// claim (automatic or a manual retry from /pro/access) got a 429, locking a legitimate,
+// already-paid customer out of their own Pro access for 15 minutes. Reproduced live against
+// real production DB + a real signed webhook before raising this. 15 leaves real headroom
+// above the known 5-attempt auto-poll for a few manual follow-up retries, while staying well
+// under the per-IP cap below, which remains the primary defense against scanning many
+// different emails from one source.
+const CLAIM_MAX_PER_EMAIL = 15;
 const CLAIM_MAX_PER_IP = 20;
 
 export type ClaimRateLimitResult = { readonly limited: false } | { readonly limited: true; readonly retryAfterSeconds: number };
