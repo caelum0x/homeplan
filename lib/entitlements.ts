@@ -61,3 +61,43 @@ export async function getProSubscriber(email: string): Promise<ProSubscriberStat
     dodoCustomerId: row.dodo_customer_id,
   };
 }
+
+const CLAIM_WINDOW_SECONDS = 15 * 60;
+const CLAIM_MAX_PER_EMAIL = 5;
+const CLAIM_MAX_PER_IP = 20;
+
+export type ClaimRateLimitResult = { readonly limited: false } | { readonly limited: true; readonly retryAfterSeconds: number };
+
+/**
+ * Anti-enumeration/brute-force guard for /api/pro/claim. That route's own trust
+ * model is "no password, no sign-up — a typed email that matches a real entitled
+ * row is itself the credential" (see its doc comment), which otherwise has zero
+ * cost to attempt: nothing stopped a caller from POSTing the same or many emails
+ * an unlimited number of times to find out which ones are paying customers and,
+ * for any that are, mint themselves a live Pro session + billing-portal cookie for
+ * that customer's account. Records every real attempt (success or failure) in
+ * Postgres and rejects once either the target email or the calling IP crosses its
+ * own threshold inside a rolling window, so mass guessing/enumeration is no longer
+ * free — a single legitimate user re-confirming access on a new device still gets
+ * through untouched.
+ */
+export async function checkAndRecordClaimAttempt(email: string, ip: string): Promise<ClaimRateLimitResult> {
+  const client = sql();
+  if (!client) return { limited: false }; // DB itself unreachable — getProSubscriber already fails closed (not entitled) in that case
+  const normalizedEmail = email.trim().toLowerCase();
+  const windowStart = new Date(Date.now() - CLAIM_WINDOW_SECONDS * 1000).toISOString();
+
+  const [emailCountRows, ipCountRows] = await Promise.all([
+    client`SELECT count(*)::int AS count FROM pro_claim_attempts WHERE email = ${normalizedEmail} AND created_at > ${windowStart}`,
+    client`SELECT count(*)::int AS count FROM pro_claim_attempts WHERE ip = ${ip} AND created_at > ${windowStart}`,
+  ]);
+  const emailCount = (emailCountRows[0] as { count: number }).count;
+  const ipCount = (ipCountRows[0] as { count: number }).count;
+
+  if (emailCount >= CLAIM_MAX_PER_EMAIL || ipCount >= CLAIM_MAX_PER_IP) {
+    return { limited: true, retryAfterSeconds: CLAIM_WINDOW_SECONDS };
+  }
+
+  await client`INSERT INTO pro_claim_attempts (email, ip) VALUES (${normalizedEmail}, ${ip})`;
+  return { limited: false };
+}
