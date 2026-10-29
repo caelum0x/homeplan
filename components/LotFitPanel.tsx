@@ -7,17 +7,35 @@ import {
   parseLotPointsText,
   lotPointsToText,
   normalizePlanToOrigin,
+  normalizeFloorsToOrigin,
   polygonBounds,
   type Point,
   type Polygon,
   type LotFitResult,
+  type MultiStoryLotFitResult,
 } from "@/lib/layout/lotFit";
 import { ROOM_FILL } from "@/lib/renderSvg";
 
+type AnyLotFitResult = LotFitResult | MultiStoryLotFitResult;
+
+function isMultiResult(result: AnyLotFitResult): result is MultiStoryLotFitResult {
+  return "floors" in result;
+}
+
+/** The single floor to draw in the preview SVG regardless of which result shape came back — the ground floor for a multi-story fit (same shared transform as every other floor, see fitMultiStoryPlanToLot), or the plan itself for a single-floor fit. */
+function previewPlan(result: AnyLotFitResult): FloorPlan | null {
+  return isMultiResult(result) ? result.floors?.[0] ?? null : result.plan;
+}
+
 interface LotFitPanelProps {
+  /** The active floor — used for display, and as the single-floor fit target when `floors` is absent/has one entry. */
   plan: FloorPlan;
-  /** Adopts the fitted (and re-normalized) plan as the app's active plan — same pattern as template/upload selection in app/page.tsx. */
+  /** Every floor of the active plan, ground floor first, when it's multi-story (matches app/page.tsx's own `floors` state). When this has 2+ entries, fitting runs through fitMultiStoryPlanToLot so every floor shares one rotation/position instead of only ever fitting the single active floor and leaving the rest misaligned. */
+  floors?: FloorPlan[] | null;
+  /** Adopts the fitted (and re-normalized) plan as the app's active plan — same pattern as template/upload selection in app/page.tsx. Used for the single-floor path. */
   onApply: (plan: FloorPlan) => void;
+  /** Adopts a fitted (and re-normalized, together) set of floors as the app's active floors — used for the multi-story path so every floor updates together, never just the one currently being viewed. */
+  onApplyFloors?: (floors: FloorPlan[]) => void;
 }
 
 /**
@@ -26,11 +44,12 @@ interface LotFitPanelProps {
  * than a drawing canvas, per this feature's own stated scope; the fitting itself is the real
  * work, not the input widget.
  */
-export function LotFitPanel({ plan, onApply }: LotFitPanelProps) {
+export function LotFitPanel({ plan, floors, onApply, onApplyFloors }: LotFitPanelProps) {
+  const isMultiStory = (floors?.length ?? 0) > 1;
   const [pointsText, setPointsText] = useState(lotPointsToText(LOT_PRESETS[0].points));
   const [setbackText, setSetbackText] = useState("5");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<LotFitResult | null>(null);
+  const [result, setResult] = useState<AnyLotFitResult | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
 
@@ -54,9 +73,9 @@ export function LotFitPanel({ plan, onApply }: LotFitPanelProps) {
       const res = await fetch("/api/fit-lot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, lot, setbackFt }),
+        body: JSON.stringify(isMultiStory ? { floors, lot, setbackFt } : { plan, lot, setbackFt }),
       });
-      const data: LotFitResult = await res.json();
+      const data: AnyLotFitResult = await res.json();
       setResult(data);
     } catch {
       setResult({
@@ -77,8 +96,14 @@ export function LotFitPanel({ plan, onApply }: LotFitPanelProps) {
   }
 
   function handleApply() {
-    if (!result?.plan) return;
-    onApply(normalizePlanToOrigin(result.plan));
+    if (!result) return;
+    if (isMultiResult(result)) {
+      if (!result.floors || !onApplyFloors) return;
+      onApplyFloors(normalizeFloorsToOrigin(result.floors));
+    } else {
+      if (!result.plan) return;
+      onApply(normalizePlanToOrigin(result.plan));
+    }
     setApplied(true);
     setTimeout(() => setApplied(false), 2500);
   }
@@ -91,6 +116,12 @@ export function LotFitPanel({ plan, onApply }: LotFitPanelProps) {
         property line around once. This computes the plan&apos;s real exterior footprint (including any L-shape/garage/courtyard notch) and
         checks whether it fits inside the lot after a uniform setback, rotating it in 90° steps if needed to make it fit. No resizing/scaling is
         applied — if it genuinely doesn&apos;t fit even rotated, you&apos;ll get the real reason and real numbers, not a forced result.
+        {isMultiStory && (
+          <span style={{ display: "block", marginTop: 6 }}>
+            This plan has {floors!.length} floors — every floor is fit together with the exact same rotation and position, so they stay stacked
+            and aligned (fitting one floor at a time would leave the others misaligned).
+          </span>
+        )}
       </p>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
@@ -176,8 +207,14 @@ export function LotFitPanel({ plan, onApply }: LotFitPanelProps) {
                 )}
               </div>
               {result.feasible && (
-                <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} onClick={handleApply}>
-                  {applied ? "Applied ✓" : "Use this fit as the active plan"}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ marginTop: 10 }}
+                  onClick={handleApply}
+                  disabled={isMultiResult(result) && !onApplyFloors}
+                >
+                  {applied ? "Applied ✓" : isMultiStory ? `Use this fit for all ${floors!.length} floors` : "Use this fit as the active plan"}
                 </button>
               )}
             </>
@@ -188,14 +225,22 @@ export function LotFitPanel({ plan, onApply }: LotFitPanelProps) {
   );
 }
 
-/** Self-contained SVG: draws the lot boundary, the setback-eroded buildable area, and the fitted plan's real rooms/walls all in the same real lot-coordinate space, at one shared scale. Separate from FloorPlanSvg on purpose — that component assumes a plan starts near (0,0) with no outer boundary to draw; this view's whole point is the opposite. */
-function LotFitVisualization({ result }: { result: LotFitResult }) {
+/**
+ * Self-contained SVG: draws the lot boundary, the setback-eroded buildable area, and the fitted
+ * plan's real rooms/walls all in the same real lot-coordinate space, at one shared scale.
+ * Separate from FloorPlanSvg on purpose — that component assumes a plan starts near (0,0) with no
+ * outer boundary to draw; this view's whole point is the opposite. For a multi-story result, draws
+ * the ground floor (`previewPlan`) — every floor shares the exact same transform (see
+ * fitMultiStoryPlanToLot), so the ground floor's outline is representative of all of them.
+ */
+function LotFitVisualization({ result }: { result: AnyLotFitResult }) {
   const SCALE = 4; // px per foot — lots run much larger than a single floor plan, so a smaller scale than the main plan view (10px/ft) keeps this readable.
   const PADDING = 20;
+  const plan = previewPlan(result);
 
   const allPoints: Point[] = [...result.lot, ...(result.buildable ?? [])];
-  if (result.plan) {
-    for (const r of result.plan.rooms) {
+  if (plan) {
+    for (const r of plan.rooms) {
       allPoints.push({ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y + r.h });
     }
   }
@@ -211,8 +256,8 @@ function LotFitVisualization({ result }: { result: LotFitResult }) {
       <path d={toPath(result.lot)} fill="none" stroke="#2b2b2b" strokeWidth={1.75} strokeDasharray="6 3" />
       {result.buildable && <path d={toPath(result.buildable)} fill="none" stroke="#8a8578" strokeWidth={1} strokeDasharray="3 3" />}
 
-      {result.plan &&
-        result.plan.rooms.map((room) => (
+      {plan &&
+        plan.rooms.map((room) => (
           <rect
             key={room.id}
             x={toPx({ x: room.x, y: room.y }).x}
@@ -224,8 +269,8 @@ function LotFitVisualization({ result }: { result: LotFitResult }) {
             strokeWidth={0.75}
           />
         ))}
-      {result.plan &&
-        result.plan.walls.map((wall) => (
+      {plan &&
+        plan.walls.map((wall) => (
           <line
             key={wall.id}
             x1={toPx({ x: wall.x1, y: wall.y1 }).x}

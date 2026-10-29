@@ -554,6 +554,69 @@ function searchPlacement(footprint: Polygon, buildable: Polygon): Placement {
   return best;
 }
 
+/**
+ * Generalized placement search over MULTIPLE footprints that must all fit inside `buildable`
+ * using the SAME translation offset (they're already in the same rotated coordinate frame —
+ * see fitMultiStoryPlanToLot). Range/grid is derived from the union of every footprint's points,
+ * since all of them move together under one shared (ox, oy). Identical algorithm to
+ * searchPlacement (coarse grid + local refine) generalized from one footprint to a list; kept as
+ * a separate function rather than rewriting searchPlacement in place, so fitPlanToLot's own
+ * single-footprint path (and its existing verification) is untouched by this addition.
+ */
+function searchPlacementMulti(footprints: Polygon[], buildable: Polygon): Placement {
+  const allPoints = footprints.flat();
+  const footB = polygonBounds(allPoints);
+  const buildB = polygonBounds(buildable);
+  const footW = footB.maxX - footB.minX;
+  const footH = footB.maxY - footB.minY;
+  const rangeX = buildB.maxX - buildB.minX - footW;
+  const rangeY = buildB.maxY - buildB.minY - footH;
+  if (rangeX < -1e-6 || rangeY < -1e-6) return { feasible: false, offset: { x: 0, y: 0 }, marginScore: Infinity };
+
+  const buildableCentroid = polygonCentroid(buildable);
+  let best: Placement = { feasible: false, offset: { x: 0, y: 0 }, marginScore: Infinity };
+
+  function evaluate(ox: number, oy: number) {
+    const shiftedFootprints = footprints.map((fp) => fp.map((p) => ({ x: p.x + ox, y: p.y + oy })));
+    if (!shiftedFootprints.every((fp) => polygonFullyInsidePolygon(fp, buildable))) return;
+    // Score against the union bounding box's own shifted centroid — a simple, consistent
+    // "how centered is this placement" proxy across every floor at once, matching the single-
+    // footprint version's intent (any single feasible, well-centered placement is a correct
+    // answer, not an optimal-packing search).
+    const unionShifted = allPoints.map((p) => ({ x: p.x + ox, y: p.y + oy }));
+    const c = polygonCentroid(unionShifted.length >= 3 ? unionShifted : shiftedFootprints[0]);
+    const score = Math.hypot(c.x - buildableCentroid.x, c.y - buildableCentroid.y);
+    if (score < best.marginScore) best = { feasible: true, offset: { x: ox, y: oy }, marginScore: score };
+  }
+
+  const dxBase = buildB.minX - footB.minX;
+  const dyBase = buildB.minY - footB.minY;
+  const COARSE = 20;
+  for (let i = 0; i <= COARSE; i++) {
+    const ox = dxBase + (rangeX * i) / COARSE;
+    for (let j = 0; j <= COARSE; j++) {
+      evaluate(ox, dyBase + (rangeY * j) / COARSE);
+    }
+  }
+
+  if (best.feasible) {
+    const stepX = Math.max(rangeX / COARSE, 0.01);
+    const stepY = Math.max(rangeY / COARSE, 0.01);
+    const REFINE = 10;
+    for (let i = -REFINE; i <= REFINE; i++) {
+      const ox = best.offset.x + (stepX * i) / REFINE;
+      if (ox < dxBase - 1e-6 || ox > dxBase + rangeX + 1e-6) continue;
+      for (let j = -REFINE; j <= REFINE; j++) {
+        const oy = best.offset.y + (stepY * j) / REFINE;
+        if (oy < dyBase - 1e-6 || oy > dyBase + rangeY + 1e-6) continue;
+        evaluate(ox, oy);
+      }
+    }
+  }
+
+  return best;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -686,6 +749,189 @@ export function fitPlanToLot(plan: FloorPlan, lotInput: Polygon, setbackFt: numb
     warnings,
     error: null,
   };
+}
+
+export interface MultiStoryLotFitResult {
+  feasible: boolean;
+  /** Real lot-coordinate-space floors (not yet normalized to origin) when feasible, same length/order as the input. Pass through `normalizeFloorsToOrigin` (NOT `normalizePlanToOrigin` per-floor — see that function's own doc comment for why) before using them as the app's active floors. Null when infeasible. */
+  floors: FloorPlan[] | null;
+  orientationDeg: 0 | 90 | 180 | 270 | null;
+  lot: Polygon;
+  buildable: Polygon | null;
+  /** The widest real floor footprint among all floors (typically the ground floor, if it has a garage) — the binding constraint for whether the whole building fits. */
+  footprintAreaSqft: number;
+  buildableAreaSqft: number | null;
+  lotAreaSqft: number;
+  warnings: string[];
+  error: string | null;
+}
+
+function failMultiResult(lot: Polygon, error: string, extra?: Partial<MultiStoryLotFitResult>): MultiStoryLotFitResult {
+  return {
+    feasible: false,
+    floors: null,
+    orientationDeg: null,
+    lot,
+    buildable: null,
+    footprintAreaSqft: 0,
+    buildableAreaSqft: null,
+    lotAreaSqft: lot.length >= 3 ? round1(polygonArea(lot)) : 0,
+    warnings: [],
+    error,
+    ...extra,
+  };
+}
+
+/**
+ * Multi-story counterpart to `fitPlanToLot`. Closes a real, previously-flagged gap (see this
+ * file's and plans/homeplan.md's own prior notes): fitting each floor of a multi-story plan to a
+ * lot INDEPENDENTLY can legitimately pick a DIFFERENT rotation/position per floor whenever a
+ * ground-floor garage gives that floor a genuinely different real silhouette than the floor(s)
+ * above it — and the app's own UI previously only ever fit+applied ONE floor at a time (the
+ * active one), silently leaving every other floor completely untransformed. Either path produces
+ * a structurally broken building: floors that no longer stack or line up.
+ *
+ * This function fits every floor using ONE SHARED rigid transform (same rotation `k`, same
+ * translation offset for all of them) by requiring EVERY floor's real footprint to fit inside the
+ * buildable area simultaneously at a given `(k, offset)` (`searchPlacementMulti`, generalizing
+ * `fitPlanToLot`'s own single-footprint search), rather than unioning/approximating the floors
+ * into one shape first. Since every floor in `generateMultiStoryPlan`'s output already shares one
+ * coordinate frame (identical stair-strip rect, identical core footprint, garage only ever
+ * extending the ground floor's own silhouette — see multiStory.ts's header comment), applying the
+ * exact same transform to all of them preserves that alignment exactly; it does not re-derive it.
+ */
+export function fitMultiStoryPlanToLot(floors: FloorPlan[], lotInput: Polygon, setbackFt: number): MultiStoryLotFitResult {
+  if (!Array.isArray(floors) || floors.length === 0) {
+    return failMultiResult(lotInput ?? [], "At least one floor is required.");
+  }
+  if (!Array.isArray(lotInput) || lotInput.length < 3) {
+    return failMultiResult(lotInput ?? [], "A lot boundary needs at least 3 points.");
+  }
+
+  const lot = ensureCCW(lotInput);
+  if (!isSimplePolygon(lot)) {
+    return failMultiResult(lot, "This lot boundary crosses itself — check the point order (it should trace the property line around once, without crossing back over itself).");
+  }
+  const lotAreaSqft = polygonArea(lot);
+  if (lotAreaSqft < 1) {
+    return failMultiResult(lot, "This lot boundary has approximately zero area — check the points.");
+  }
+
+  const safeSetback = Math.max(0, setbackFt);
+  const buildable = safeSetback > 0 ? insetPolygon(lot, safeSetback) : lot;
+  if (!buildable) {
+    const maxSetback = findMaxFeasibleSetback(lot);
+    return failMultiResult(
+      lot,
+      `A ${safeSetback}ft setback leaves no buildable area on this lot shape — the largest setback this lot can take is about ${maxSetback}ft.`,
+      { lotAreaSqft: round1(lotAreaSqft) },
+    );
+  }
+  const buildableAreaSqft = polygonArea(buildable);
+
+  const footprints: Polygon[] = [];
+  for (const floor of floors) {
+    const fp = extractFootprintPolygon(floor);
+    if (!fp) {
+      return failMultiResult(lot, "Could not trace one of this plan's floors' exterior footprint into a boundary.", {
+        lotAreaSqft: round1(lotAreaSqft),
+        buildableAreaSqft: round1(buildableAreaSqft),
+      });
+    }
+    footprints.push(fp);
+  }
+  const widestFootprintAreaSqft = Math.max(...footprints.map(polygonArea));
+
+  let bestFeasible: { k: number; offset: Point; score: number } | null = null;
+  for (let k = 0; k < 4; k++) {
+    const rotatedFootprints = footprints.map((fp) => fp.map((p) => rotate90(p, k)));
+    const placement = searchPlacementMulti(rotatedFootprints, buildable);
+    if (placement.feasible && (!bestFeasible || placement.marginScore < bestFeasible.score)) {
+      bestFeasible = { k, offset: placement.offset, score: placement.marginScore };
+    }
+  }
+
+  if (!bestFeasible) {
+    return failMultiResult(
+      lot,
+      `This plan's ${floors.length} floors (widest real footprint ~${round1(widestFootprintAreaSqft)} sqft) don't all fit inside the buildable area after setbacks (~${round1(buildableAreaSqft)} sqft, on a ${round1(lotAreaSqft)} sqft lot) at any of the 4 standard orientations using one shared position for every floor. Try a smaller setback, a bigger lot, or regenerate the plan at a smaller square footage before fitting.`,
+      { footprintAreaSqft: round1(widestFootprintAreaSqft), buildableAreaSqft: round1(buildableAreaSqft), lotAreaSqft: round1(lotAreaSqft) },
+    );
+  }
+
+  const { k, offset } = bestFeasible;
+  const transform: Transform = (p) => {
+    const r = rotate90(p, k);
+    return { x: r.x + offset.x, y: r.y + offset.y };
+  };
+
+  const warnings: string[] = [];
+  if (safeSetback > 0) warnings.push(`Fitted with a uniform ${safeSetback}ft setback from the lot line on all sides.`);
+  if (k !== 0) warnings.push(`Rotated ${k * 90}° from the plan's original orientation to make it fit this lot.`);
+  warnings.push(`All ${floors.length} floors fitted with the same rotation and position, so they stay stacked and aligned.`);
+  const utilization = buildableAreaSqft > 0 ? (widestFootprintAreaSqft / buildableAreaSqft) * 100 : 0;
+  warnings.push(`Widest floor's real footprint ~${round1(widestFootprintAreaSqft)} sqft uses ~${round1(utilization)}% of the ~${round1(buildableAreaSqft)} sqft buildable area.`);
+
+  const fittedFloors = floors.map((floor, i) => {
+    const fittedRooms = floor.rooms.map((r) => transformRoom(r, transform));
+    const fittedWalls = floor.walls.map((w) => transformWall(w, transform));
+    const fittedDoors = floor.doors.map((d) => transformDoor(d, transform, k));
+    const fittedWindows = (floor.windows ?? []).map((w) => transformWindow(w, transform, k));
+    const fittedFurniture = floor.furniture.map((f) => transformFurniture(f, transform, k));
+    const fittedFootprintBounds = polygonBounds(footprints[i].map(transform));
+    return {
+      ...floor,
+      footprint: { w: round1(fittedFootprintBounds.maxX - fittedFootprintBounds.minX), h: round1(fittedFootprintBounds.maxY - fittedFootprintBounds.minY) },
+      rooms: fittedRooms,
+      walls: fittedWalls,
+      doors: fittedDoors,
+      windows: fittedWindows,
+      furniture: fittedFurniture,
+      warnings: [...floor.warnings, ...warnings],
+    };
+  });
+
+  return {
+    feasible: true,
+    floors: fittedFloors,
+    orientationDeg: (k * 90) as 0 | 90 | 180 | 270,
+    lot,
+    buildable,
+    footprintAreaSqft: round1(widestFootprintAreaSqft),
+    buildableAreaSqft: round1(buildableAreaSqft),
+    lotAreaSqft: round1(lotAreaSqft),
+    warnings,
+    error: null,
+  };
+}
+
+/**
+ * Multi-story counterpart to `normalizePlanToOrigin`. Shifts EVERY floor by the SAME offset
+ * (derived from the union of every floor's rooms) so they stay aligned after re-basing near the
+ * origin — calling `normalizePlanToOrigin` on each floor independently would reintroduce exactly
+ * the misalignment this file's `fitMultiStoryPlanToLot` exists to prevent, since different
+ * floors' own room sets legitimately start at different minimums once a garage (ground-floor
+ * only) is involved, even though they were correctly aligned together in lot-coordinate space.
+ */
+export function normalizeFloorsToOrigin(floors: FloorPlan[]): FloorPlan[] {
+  const allRooms = floors.flatMap((f) => f.rooms);
+  const bounds = allRooms.reduce(
+    (acc, r) => ({ minX: Math.min(acc.minX, r.x), minY: Math.min(acc.minY, r.y) }),
+    { minX: Infinity, minY: Infinity },
+  );
+  if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.minY)) return floors;
+  const dx = -bounds.minX;
+  const dy = -bounds.minY;
+  if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) return floors;
+  const transform: Transform = (p) => ({ x: p.x + dx, y: p.y + dy });
+  return floors.map((floor) => ({
+    ...floor,
+    rooms: floor.rooms.map((r) => transformRoom(r, transform)),
+    walls: floor.walls.map((w) => transformWall(w, transform)),
+    doors: floor.doors.map((d) => transformDoor(d, transform, 0)),
+    windows: (floor.windows ?? []).map((w) => transformWindow(w, transform, 0)),
+    furniture: floor.furniture.map((f) => transformFurniture(f, transform, 0)),
+  }));
 }
 
 // ---------------------------------------------------------------------------

@@ -149,6 +149,19 @@ export default function Home() {
     setPlan(floors[index]);
   }
 
+  /**
+   * Replaces EVERY floor at once (same length/order) — used by LotFitPanel's multi-story fit
+   * result. Distinct from `updatePlan`, which only ever touches the currently-active floor: a
+   * lot-fit result for a multi-story plan already carries a shared transform across all floors
+   * (fitMultiStoryPlanToLot), so adopting it one floor at a time here would silently leave every
+   * other floor at its old, now-misaligned coordinates — the exact live bug this function exists
+   * to close.
+   */
+  function updateAllFloors(nextFloors: FloorPlan[]) {
+    setFloors(nextFloors);
+    setPlan(nextFloors[activeFloor] ?? nextFloors[0]);
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStage("loading");
@@ -610,7 +623,7 @@ export default function Home() {
               {viewMode === "3d" && <FloorPlan3D plan={plan} />}
               {viewMode === "render" && <AiRenderPanel plan={plan} />}
               {viewMode === "zoning" && <ZoningPanel plan={plan} stories={floors ? (floors.length as 1 | 2) : 1} />}
-              {viewMode === "lot" && <LotFitPanel plan={plan} onApply={updatePlan} />}
+              {viewMode === "lot" && <LotFitPanel plan={plan} floors={floors} onApply={updatePlan} onApplyFloors={updateAllFloors} />}
             </div>
 
             <div style={{ marginTop: 18 }}>

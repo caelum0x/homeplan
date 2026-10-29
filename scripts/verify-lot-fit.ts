@@ -4,9 +4,12 @@ import { parseDescription } from "../lib/parseDescription";
 import { generateFloorPlan } from "../lib/layout/generate";
 import {
   fitPlanToLot,
+  fitMultiStoryPlanToLot,
   normalizePlanToOrigin,
+  normalizeFloorsToOrigin,
   extractFootprintPolygon,
   polygonArea,
+  polygonBounds,
   polygonFullyInsidePolygon,
   insetPolygon,
   rotate90,
@@ -341,6 +344,113 @@ console.log("\n=== 10. Every LOT_PRESETS entry is a valid simple polygon with po
 for (const preset of LOT_PRESETS) {
   const area = polygonArea(preset.points);
   check(`preset "${preset.label}" has positive area`, area > 10, `area=${area}`);
+}
+
+console.log(
+  "\n=== 11. fitMultiStoryPlanToLot: a garage-equipped multi-story plan no longer gets each floor fit at a DIFFERENT orientation ===",
+);
+{
+  // Unlike scenario 9's no-garage brief, THIS brief's ground floor has a real garage — its real
+  // exterior silhouette is genuinely wider than the upper floor's (a plain rectangle), even
+  // though both report the same bounding-box `footprint` metadata (multiStory.ts's own
+  // documented characteristic). First prove the actual bug exists at the fitPlanToLot level
+  // (each floor independently fit CAN and DOES pick a different real orientation here), then
+  // prove fitMultiStoryPlanToLot closes it by forcing one shared transform.
+  const briefInput = { ...parseDescription("4 bed 3 bath house, 2800 square feet, with a 2-car garage"), stories: 2 as const };
+  const { floors } = generateMultiStoryPlan(briefInput);
+  const [ground, upper] = floors;
+  check("sanity: this brief's ground floor has a real garage", ground.rooms.some((r) => r.type === "garage"));
+  check("sanity: the upper floor has no garage", !upper.rooms.some((r) => r.type === "garage"));
+
+  const groundFpBounds = polygonBounds(extractFootprintPolygon(ground)!);
+  const upperFpBounds = polygonBounds(extractFootprintPolygon(upper)!);
+  check(
+    "sanity: the garage genuinely makes the ground floor's real footprint wider than the upper floor's",
+    groundFpBounds.maxX - groundFpBounds.minX > upperFpBounds.maxX - upperFpBounds.minX + 1,
+    `ground width ${groundFpBounds.maxX - groundFpBounds.minX} vs upper width ${upperFpBounds.maxX - upperFpBounds.minX}`,
+  );
+
+  // A lot narrower than the ground floor's real footprint width but wide enough for the upper
+  // floor's — this forces ground to rotate 90deg to fit while upper, already narrow enough,
+  // has no structural need to.
+  const divergingLot = [
+    { x: 0, y: 0 },
+    { x: groundFpBounds.maxY - groundFpBounds.minY + 0.5, y: 0 },
+    { x: groundFpBounds.maxY - groundFpBounds.minY + 0.5, y: 60 },
+    { x: 0, y: 60 },
+  ];
+  const groundIndependent = fitPlanToLot(ground, divergingLot, 0);
+  const upperIndependent = fitPlanToLot(upper, divergingLot, 0);
+  check("ground floor fits independently", groundIndependent.feasible, groundIndependent.error ?? undefined);
+  check("upper floor fits independently", upperIndependent.feasible, upperIndependent.error ?? undefined);
+  check(
+    "REAL BUG CONFIRMED (pre-fix behavior): fitting each floor independently picks a DIFFERENT orientation for ground vs. upper",
+    groundIndependent.orientationDeg !== upperIndependent.orientationDeg,
+    `ground=${groundIndependent.orientationDeg} upper=${upperIndependent.orientationDeg} — if these matched, this test lot no longer demonstrates the bug and needs re-tuning`,
+  );
+
+  // Now the actual fix: fitMultiStoryPlanToLot must find ONE shared orientation that fits BOTH
+  // floors at once, never picking per-floor orientations independently.
+  const multiFit = fitMultiStoryPlanToLot(floors, divergingLot, 0);
+  check("fitMultiStoryPlanToLot finds a real shared fit for both floors", multiFit.feasible, multiFit.error ?? undefined);
+  check("fitMultiStoryPlanToLot returns both floors", (multiFit.floors?.length ?? 0) === 2);
+
+  if (multiFit.feasible && multiFit.floors) {
+    const [fitGround, fitUpper] = multiFit.floors;
+    // The defining correctness property: the SAME rigid transform was applied to every floor, so
+    // the stair strip (identical rect on both floors by construction) must still line up exactly
+    // — this is what "aligned floors" actually means, not just "both individually fit somewhere."
+    const groundStairs = fitGround.rooms.find((r) => r.type === "stairs")!;
+    const upperStairs = fitUpper.rooms.find((r) => r.type === "stairs")!;
+    const stairsAligned =
+      Math.abs(groundStairs.x - upperStairs.x) < 0.01 &&
+      Math.abs(groundStairs.y - upperStairs.y) < 0.01 &&
+      Math.abs(groundStairs.w - upperStairs.w) < 0.01 &&
+      Math.abs(groundStairs.h - upperStairs.h) < 0.01;
+    check(
+      "ground and upper floor stair strips line up exactly under the shared multi-floor transform",
+      stairsAligned,
+      `${JSON.stringify({ x: groundStairs.x, y: groundStairs.y, w: groundStairs.w, h: groundStairs.h })} vs ${JSON.stringify({ x: upperStairs.x, y: upperStairs.y, w: upperStairs.w, h: upperStairs.h })}`,
+    );
+
+    // Both floors' real (non-bbox) footprints must each independently be fully inside the real
+    // buildable area at this shared transform — not just "the wider one fits."
+    const buildable = multiFit.buildable!;
+    const groundFitsBuildable = polygonFullyInsidePolygon(
+      extractFootprintPolygon(fitGround)!,
+      buildable,
+    );
+    const upperFitsBuildable = polygonFullyInsidePolygon(extractFootprintPolygon(fitUpper)!, buildable);
+    check("ground floor's real footprint is fully inside the buildable area at the shared transform", groundFitsBuildable);
+    check("upper floor's real footprint is fully inside the buildable area at the shared transform", upperFitsBuildable);
+
+    // normalizeFloorsToOrigin must preserve alignment too (shift by one shared offset, not a
+    // per-floor one) — re-check stairs line up after normalizing, the exact step the real app's
+    // "Use this fit" button runs before adopting the result.
+    const normalized = normalizeFloorsToOrigin(multiFit.floors);
+    const normGround = normalized[0].rooms.find((r) => r.type === "stairs")!;
+    const normUpper = normalized[1].rooms.find((r) => r.type === "stairs")!;
+    check(
+      "stair strips still line up exactly after normalizeFloorsToOrigin (shared, not per-floor, origin shift)",
+      Math.abs(normGround.x - normUpper.x) < 0.01 && Math.abs(normGround.y - normUpper.y) < 0.01,
+    );
+    check(
+      "normalizeFloorsToOrigin actually moved the floors near the origin (not a no-op) given this lot's real coordinates",
+      normalized[0].rooms.some((r) => Math.abs(r.x) < 50 && Math.abs(r.y) < 50),
+    );
+  }
+
+  // Infeasible case: a lot too small for even the narrower (upper) floor's footprint means the
+  // whole multi-story fit must honestly fail, with real numbers, not silently succeed on the
+  // floor that happens to fit.
+  const tinyLot = [
+    { x: 0, y: 0 },
+    { x: 5, y: 0 },
+    { x: 5, y: 5 },
+    { x: 0, y: 5 },
+  ];
+  const tinyFit = fitMultiStoryPlanToLot(floors, tinyLot, 0);
+  check("a genuinely too-small lot is honestly reported as infeasible for the multi-story fit", !tinyFit.feasible && !!tinyFit.error);
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`}\n`);
