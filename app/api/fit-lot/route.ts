@@ -7,6 +7,7 @@ interface FitLotRequestBody {
   /** Multi-story alternative to `plan`: every floor, ground first, fit together with ONE shared rotation/position — see fitMultiStoryPlanToLot's own doc comment for why fitting floors independently is a real bug, not just a theoretical one. Provide exactly one of `plan`/`floors`. */
   floors?: unknown;
   lot?: unknown;
+  /** Either one uniform setback (number) or a real per-edge setback (array, one value per `lot` point, same order) — front/side/rear-style setbacks on an arbitrary polygon, not just the rectangular-lot case `zoningRules.ts` already handles. See lib/layout/lotFit.ts's `insetPolygon` doc comment for the exact edge-indexing contract. */
   setbackFt?: unknown;
 }
 
@@ -47,12 +48,16 @@ function isLotPolygon(value: unknown): value is Point[] {
  * L-shaped generation gate, it's a separate post-generation geometric pass, and this task's own
  * brief is explicit that billing/gating code is out of scope).
  *
- * POST { plan: FloorPlan, lot: {x,y}[], setbackFt?: number }
+ * POST { plan: FloorPlan, lot: {x,y}[], setbackFt?: number | number[] }
  * -> { feasible, plan?, orientationDeg, lot, buildable, footprintAreaSqft, buildableAreaSqft, lotAreaSqft, warnings, error }
  *
- * POST { floors: FloorPlan[], lot: {x,y}[], setbackFt?: number }  (multi-story: ground floor first)
+ * POST { floors: FloorPlan[], lot: {x,y}[], setbackFt?: number | number[] }  (multi-story: ground floor first)
  * -> same shape, with `floors?` (array) in place of `plan?` — every floor fit together with one
  * shared rotation/position, so they stay stacked and aligned. See fitMultiStoryPlanToLot.
+ *
+ * `setbackFt` as an array must have exactly one value per `lot` point (edge i = the setback for
+ * the lot line from `lot[i]` to `lot[(i+1) % lot.length]`) — a real front/side/rear-style setback
+ * per lot line, not just one uniform value. See lib/layout/lotFit.ts's `insetPolygon`.
  *
  * `plan`/`floors` in the response (when feasible) are in real LOT coordinates, not re-based to
  * the origin — on purpose, so the caller (components/LotFitPanel.tsx) can draw the building
@@ -88,12 +93,22 @@ export async function POST(request: Request) {
   if (body.lot.length > 40) {
     return NextResponse.json({ error: "Lot boundary is limited to 40 points." }, { status: 400 });
   }
-  let setbackFt = 0;
+  let setbackFt: number | number[] = 0;
   if (body.setbackFt !== undefined) {
-    if (typeof body.setbackFt !== "number" || !Number.isFinite(body.setbackFt) || body.setbackFt < 0 || body.setbackFt > 200) {
-      return NextResponse.json({ error: "'setbackFt' must be a number between 0 and 200." }, { status: 400 });
+    const isValidNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 200;
+    if (Array.isArray(body.setbackFt)) {
+      if (body.setbackFt.length !== body.lot.length) {
+        return NextResponse.json({ error: `'setbackFt' array must have exactly one value per lot point (got ${body.setbackFt.length} for ${body.lot.length} points).` }, { status: 400 });
+      }
+      if (!body.setbackFt.every(isValidNumber)) {
+        return NextResponse.json({ error: "Every value in the 'setbackFt' array must be a number between 0 and 200." }, { status: 400 });
+      }
+      setbackFt = body.setbackFt as number[];
+    } else if (isValidNumber(body.setbackFt)) {
+      setbackFt = body.setbackFt;
+    } else {
+      return NextResponse.json({ error: "'setbackFt' must be a number between 0 and 200, or an array of such numbers (one per lot point)." }, { status: 400 });
     }
-    setbackFt = body.setbackFt;
   }
 
   if (hasFloors) {

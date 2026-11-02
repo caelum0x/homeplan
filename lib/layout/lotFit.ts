@@ -61,6 +61,25 @@ export function ensureCCW(poly: Polygon): Polygon {
   return signedPolygonArea(poly) < 0 ? [...poly].reverse() : poly;
 }
 
+/**
+ * `ensureCCW`'s per-edge-setback-aware counterpart: when a caller holds a per-edge setback array
+ * indexed to their ORIGINAL (possibly clockwise) point order, reversing the polygon to CCW
+ * without also remapping the array would silently attach every setback to the wrong physical lot
+ * line. Reverses both together, same edge-remap rule `insetPolygon` documents and uses internally
+ * (reversed edge j === original edge `(n - 2 - j) mod n`, walked backward).
+ */
+function ensureCCWWithSetback(poly: Polygon, setback: number | readonly number[]): { lot: Polygon; setback: number | number[] } {
+  const asArray: readonly number[] | null = Array.isArray(setback) ? setback : null;
+  if (signedPolygonArea(poly) >= 0) {
+    return { lot: poly, setback: asArray ? [...asArray] : (setback as number) };
+  }
+  const n = poly.length;
+  const lot = [...poly].reverse();
+  if (!asArray) return { lot, setback: setback as number };
+  const remapped = Array.from({ length: n }, (_, i) => asArray[(((n - 2 - i) % n) + n) % n]);
+  return { lot, setback: remapped };
+}
+
 export function polygonCentroid(poly: Polygon): Point {
   let cx = 0;
   let cy = 0;
@@ -186,12 +205,36 @@ function lineIntersection(p1: Point, p2: Point, p3: Point, p4: Point): Point | n
  * remains correct as long as the setback doesn't exceed the lot's local feature size enough to
  * collapse/cross edges — validated below (simple-polygon + positive-area checks), returning null
  * rather than silently shipping a self-intersecting "buildable area" when it does.
+ *
+ * `setback` may be a single uniform number (unchanged behavior) OR an array with one value per
+ * lot edge (`setback[i]` applies to the edge running from `polygonIn[i]` to `polygonIn[(i+1) %
+ * n]`, in the SAME point order/winding the caller passed in `polygonIn` — not the internal CCW
+ * convention) — real per-edge setbacks (e.g. a 20ft front-yard line vs 7ft side lines vs 15ft
+ * rear) on an arbitrary polygon, not just the rectangular-lot case `zoningRules.ts` already
+ * handles. This was flagged "honestly still open...would need a genuine non-uniform
+ * polygon-erosion algorithm" in plans/homeplan.md's 2026-11-02 zoning entry; the actual erosion
+ * math below only required each edge's offset distance to stop being a single shared constant —
+ * translate-and-reintersect never assumed uniformity, it just always happened to receive one.
  */
-export function insetPolygon(polygonIn: Polygon, setback: number): Polygon | null {
-  if (setback <= 0) return polygonIn;
-  const poly = ensureCCW(polygonIn);
-  const n = poly.length;
+export function insetPolygon(polygonIn: Polygon, setback: number | readonly number[]): Polygon | null {
+  const perEdge = Array.isArray(setback);
+  if (perEdge && setback.length !== polygonIn.length) return null;
+  if (!perEdge && (setback as number) <= 0) return polygonIn;
+  if (perEdge && (setback as readonly number[]).every((s) => s <= 0)) return polygonIn;
+
+  const n = polygonIn.length;
   if (n < 3) return null;
+  const wasCW = signedPolygonArea(polygonIn) < 0;
+  const poly = wasCW ? [...polygonIn].reverse() : polygonIn;
+  // `setbacks[i]` must stay attached to its real physical lot line, not its original array index.
+  // `ensureCCW`'s reversal (done manually here so the remap below can see it) makes reversed edge
+  // j the same physical edge as original edge `(n - 2 - j) mod n`, walked backward — verified by
+  // hand for n=4 in this file's own commit message, not assumed.
+  const setbacks: number[] = perEdge
+    ? wasCW
+      ? Array.from({ length: n }, (_, i) => Math.max(0, (setback as readonly number[])[(((n - 2 - i) % n) + n) % n]))
+      : (setback as readonly number[]).map((s) => Math.max(0, s))
+    : new Array(n).fill(Math.max(0, setback as number));
 
   const offsetLines: { a: Point; b: Point }[] = [];
   for (let i = 0; i < n; i++) {
@@ -204,7 +247,8 @@ export function insetPolygon(polygonIn: Polygon, setback: number): Polygon | nul
     // Inward normal for a CCW polygon edge: rotate the edge direction +90deg.
     const nx = -dy / len;
     const ny = dx / len;
-    offsetLines.push({ a: { x: A.x + nx * setback, y: A.y + ny * setback }, b: { x: B.x + nx * setback, y: B.y + ny * setback } });
+    const s = setbacks[i];
+    offsetLines.push({ a: { x: A.x + nx * s, y: A.y + ny * s }, b: { x: B.x + nx * s, y: B.y + ny * s } });
   }
 
   const result: Polygon = [];
@@ -218,31 +262,26 @@ export function insetPolygon(polygonIn: Polygon, setback: number): Polygon | nul
 
   if (polygonArea(result) < 1e-6) return null;
   if (!isSimplePolygon(result)) return null;
-  // Real sanity check the adjacent-edge-intersection method can't give for free: when the
-  // setback exceeds a convex shape's local "radius" (e.g. half a square's side), each corner's
-  // new position keeps sliding along its diagonal past the shape's own skeleton center and comes
-  // out the other side — still a simple, positive-area polygon, but geometrically wrong (it sits
-  // *closer* than `setback` to whichever edges weren't adjacent to that corner). Found by actually
-  // running this on a 40x40 lot with a 25ft setback (scripts/verify-lot-fit.ts) and reading the
-  // real resulting coordinates, not assumed from the algorithm. Catch it generally: every real
-  // vertex of a valid erosion must sit at >= `setback` from EVERY original edge, not just the two
-  // that produced it.
+  // Real sanity check the adjacent-edge-intersection method can't give for free: when a setback
+  // exceeds a convex shape's local "radius" (e.g. half a square's side), each corner's new
+  // position keeps sliding along its diagonal past the shape's own skeleton center and comes out
+  // the other side — still a simple, positive-area polygon, but geometrically wrong (it sits
+  // *closer* than that edge's own setback to whichever edges weren't adjacent to that corner).
+  // Found by actually running this on a 40x40 lot with a 25ft setback (scripts/verify-lot-fit.ts)
+  // and reading the real resulting coordinates, not assumed from the algorithm. Catch it
+  // generally, per edge: every real vertex of a valid erosion must sit at >= edge j's OWN setback
+  // from edge j, for every edge j, not just the two that produced it (reduces to the original
+  // single-constant check exactly when every setback is equal).
   const eps = 0.05;
   for (const v of result) {
-    if (minDistanceToPolygonEdges(v, poly) < setback - eps) return null;
+    for (let j = 0; j < n; j++) {
+      if (distToSegment(v, poly[j], poly[(j + 1) % n]) < setbacks[j] - eps) return null;
+    }
   }
   return result;
 }
 
-function minDistanceToPolygonEdges(p: Point, poly: Polygon): number {
-  let min = Infinity;
-  for (let i = 0; i < poly.length; i++) {
-    min = Math.min(min, distToSegment(p, poly[i], poly[(i + 1) % poly.length]));
-  }
-  return min;
-}
-
-/** Binary-searches the largest setback this lot shape can take before erosion collapses it — a real, useful number for the "setback too large" error message, not a generic failure. */
+/** Binary-searches the largest UNIFORM setback this lot shape can take before erosion collapses it — a real, useful number for the "setback too large" error message, not a generic failure. */
 function findMaxFeasibleSetback(lot: Polygon): number {
   const bounds = polygonBounds(lot);
   let lo = 0;
@@ -254,6 +293,20 @@ function findMaxFeasibleSetback(lot: Polygon): number {
     else hi = mid;
   }
   return Math.round(lo * 10) / 10;
+}
+
+/** Per-edge counterpart to `findMaxFeasibleSetback`: binary-searches the largest scale factor `t` (0..1) such that `setbacks.map(s => s*t)` still leaves a valid buildable area — the real "which of your entered setbacks would need to shrink, and by how much" number for the per-edge error message, instead of silently falling back to a uniform-setback answer that doesn't describe what the user actually typed. */
+function findMaxFeasibleSetbackScale(lot: Polygon, setbacks: readonly number[]): number {
+  if (setbacks.every((s) => s <= 0)) return 1;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    const eroded = insetPolygon(lot, setbacks.map((s) => s * mid));
+    if (eroded && polygonArea(eroded) > 1) lo = mid;
+    else hi = mid;
+  }
+  return Math.round(lo * 1000) / 1000;
 }
 
 /**
@@ -652,18 +705,27 @@ function failResult(lot: Polygon, error: string, extra?: Partial<LotFitResult>):
 }
 
 /**
- * The real fitting pass: does `plan`'s actual exterior footprint fit inside `lotInput` after a
- * uniform `setbackFt` setback, at 0/90/180/270 degrees? If so, returns the plan with every
- * coordinate (rooms, walls, doors incl. recomputed hinge sides, windows, furniture) transformed
- * into real lot-coordinate space at the best-fitting orientation + position. See this file's
- * header for the two scope boundaries (rotation steps, no scale) and why.
+ * The real fitting pass: does `plan`'s actual exterior footprint fit inside `lotInput` after
+ * setbacks, at 0/90/180/270 degrees? `setbackFt` may be one uniform number (unchanged behavior)
+ * or an array with one value per `lotInput` edge (real front/side/rear-style setbacks on an
+ * arbitrary polygon, not just a rectangle — see `insetPolygon`'s own doc comment). If feasible,
+ * returns the plan with every coordinate (rooms, walls, doors incl. recomputed hinge sides,
+ * windows, furniture) transformed into real lot-coordinate space at the best-fitting orientation
+ * + position. See this file's header for the two scope boundaries (rotation steps, no scale) and
+ * why.
  */
-export function fitPlanToLot(plan: FloorPlan, lotInput: Polygon, setbackFt: number): LotFitResult {
+export function fitPlanToLot(plan: FloorPlan, lotInput: Polygon, setbackFt: number | readonly number[]): LotFitResult {
   if (!Array.isArray(lotInput) || lotInput.length < 3) {
     return failResult(lotInput ?? [], "A lot boundary needs at least 3 points.");
   }
+  if (Array.isArray(setbackFt) && setbackFt.length !== lotInput.length) {
+    return failResult(lotInput, `A per-edge setback list needs exactly one value per lot point (got ${setbackFt.length} setbacks for ${lotInput.length} points).`);
+  }
 
-  const lot = ensureCCW(lotInput);
+  // Reverse the lot AND the per-edge setback array together (if given) — see
+  // `ensureCCWWithSetback`'s doc comment for why reversing one without the other would attach
+  // every entered setback to the wrong physical lot line.
+  const { lot, setback: ccwSetback } = ensureCCWWithSetback(lotInput, setbackFt);
   if (!isSimplePolygon(lot)) {
     return failResult(lot, "This lot boundary crosses itself — check the point order (it should trace the property line around once, without crossing back over itself).");
   }
@@ -672,13 +734,17 @@ export function fitPlanToLot(plan: FloorPlan, lotInput: Polygon, setbackFt: numb
     return failResult(lot, "This lot boundary has approximately zero area — check the points.");
   }
 
-  const safeSetback = Math.max(0, setbackFt);
-  const buildable = safeSetback > 0 ? insetPolygon(lot, safeSetback) : lot;
+  const perEdge = Array.isArray(ccwSetback);
+  const safeSetback: number | number[] = perEdge ? (ccwSetback as number[]).map((s) => Math.max(0, s)) : Math.max(0, ccwSetback as number);
+  const hasAnySetback = perEdge ? (safeSetback as number[]).some((s) => s > 0) : (safeSetback as number) > 0;
+  const buildable = hasAnySetback ? insetPolygon(lot, safeSetback) : lot;
   if (!buildable) {
-    const maxSetback = findMaxFeasibleSetback(lot);
+    const detail = perEdge
+      ? `the largest overall scale these entered setbacks can take on this lot shape is about ${Math.round(findMaxFeasibleSetbackScale(lot, safeSetback as number[]) * 100)}% of what you entered`
+      : `the largest setback this lot can take is about ${findMaxFeasibleSetback(lot)}ft`;
     return failResult(
       lot,
-      `A ${safeSetback}ft setback leaves no buildable area on this lot shape — the largest setback this lot can take is about ${maxSetback}ft.`,
+      `${perEdge ? "These per-edge setbacks leave" : `A ${safeSetback}ft setback leaves`} no buildable area on this lot shape — ${detail}.`,
       { lotAreaSqft: round1(lotAreaSqft) },
     );
   }
@@ -721,7 +787,20 @@ export function fitPlanToLot(plan: FloorPlan, lotInput: Polygon, setbackFt: numb
   const fittedFootprintBounds = polygonBounds(footprint.map(transform));
 
   const warnings: string[] = [];
-  if (safeSetback > 0) warnings.push(`Fitted with a uniform ${safeSetback}ft setback from the lot line on all sides.`);
+  if (perEdge) {
+    const edgeSetbacks = safeSetback as number[];
+    if (edgeSetbacks.some((s) => s > 0)) {
+      const min = Math.min(...edgeSetbacks);
+      const max = Math.max(...edgeSetbacks);
+      warnings.push(
+        min === max
+          ? `Fitted with a uniform ${round1(min)}ft setback from every lot line (entered per-edge, all equal).`
+          : `Fitted with a per-edge setback from ${round1(min)}ft to ${round1(max)}ft, one value per lot line.`,
+      );
+    }
+  } else if ((safeSetback as number) > 0) {
+    warnings.push(`Fitted with a uniform ${safeSetback}ft setback from the lot line on all sides.`);
+  }
   if (k !== 0) warnings.push(`Rotated ${k * 90}° from the plan's original orientation to make it fit this lot.`);
   const utilization = buildableAreaSqft > 0 ? (footprintAreaSqft / buildableAreaSqft) * 100 : 0;
   warnings.push(`Real footprint ~${round1(footprintAreaSqft)} sqft uses ~${round1(utilization)}% of the ~${round1(buildableAreaSqft)} sqft buildable area.`);
@@ -800,15 +879,18 @@ function failMultiResult(lot: Polygon, error: string, extra?: Partial<MultiStory
  * extending the ground floor's own silhouette — see multiStory.ts's header comment), applying the
  * exact same transform to all of them preserves that alignment exactly; it does not re-derive it.
  */
-export function fitMultiStoryPlanToLot(floors: FloorPlan[], lotInput: Polygon, setbackFt: number): MultiStoryLotFitResult {
+export function fitMultiStoryPlanToLot(floors: FloorPlan[], lotInput: Polygon, setbackFt: number | readonly number[]): MultiStoryLotFitResult {
   if (!Array.isArray(floors) || floors.length === 0) {
     return failMultiResult(lotInput ?? [], "At least one floor is required.");
   }
   if (!Array.isArray(lotInput) || lotInput.length < 3) {
     return failMultiResult(lotInput ?? [], "A lot boundary needs at least 3 points.");
   }
+  if (Array.isArray(setbackFt) && setbackFt.length !== lotInput.length) {
+    return failMultiResult(lotInput, `A per-edge setback list needs exactly one value per lot point (got ${setbackFt.length} setbacks for ${lotInput.length} points).`);
+  }
 
-  const lot = ensureCCW(lotInput);
+  const { lot, setback: ccwSetback } = ensureCCWWithSetback(lotInput, setbackFt);
   if (!isSimplePolygon(lot)) {
     return failMultiResult(lot, "This lot boundary crosses itself — check the point order (it should trace the property line around once, without crossing back over itself).");
   }
@@ -817,13 +899,17 @@ export function fitMultiStoryPlanToLot(floors: FloorPlan[], lotInput: Polygon, s
     return failMultiResult(lot, "This lot boundary has approximately zero area — check the points.");
   }
 
-  const safeSetback = Math.max(0, setbackFt);
-  const buildable = safeSetback > 0 ? insetPolygon(lot, safeSetback) : lot;
+  const perEdge = Array.isArray(ccwSetback);
+  const safeSetback: number | number[] = perEdge ? (ccwSetback as number[]).map((s) => Math.max(0, s)) : Math.max(0, ccwSetback as number);
+  const hasAnySetback = perEdge ? (safeSetback as number[]).some((s) => s > 0) : (safeSetback as number) > 0;
+  const buildable = hasAnySetback ? insetPolygon(lot, safeSetback) : lot;
   if (!buildable) {
-    const maxSetback = findMaxFeasibleSetback(lot);
+    const detail = perEdge
+      ? `the largest overall scale these entered setbacks can take on this lot shape is about ${Math.round(findMaxFeasibleSetbackScale(lot, safeSetback as number[]) * 100)}% of what you entered`
+      : `the largest setback this lot can take is about ${findMaxFeasibleSetback(lot)}ft`;
     return failMultiResult(
       lot,
-      `A ${safeSetback}ft setback leaves no buildable area on this lot shape — the largest setback this lot can take is about ${maxSetback}ft.`,
+      `${perEdge ? "These per-edge setbacks leave" : `A ${safeSetback}ft setback leaves`} no buildable area on this lot shape — ${detail}.`,
       { lotAreaSqft: round1(lotAreaSqft) },
     );
   }
@@ -866,7 +952,20 @@ export function fitMultiStoryPlanToLot(floors: FloorPlan[], lotInput: Polygon, s
   };
 
   const warnings: string[] = [];
-  if (safeSetback > 0) warnings.push(`Fitted with a uniform ${safeSetback}ft setback from the lot line on all sides.`);
+  if (perEdge) {
+    const edgeSetbacks = safeSetback as number[];
+    if (edgeSetbacks.some((s) => s > 0)) {
+      const min = Math.min(...edgeSetbacks);
+      const max = Math.max(...edgeSetbacks);
+      warnings.push(
+        min === max
+          ? `Fitted with a uniform ${round1(min)}ft setback from every lot line (entered per-edge, all equal).`
+          : `Fitted with a per-edge setback from ${round1(min)}ft to ${round1(max)}ft, one value per lot line.`,
+      );
+    }
+  } else if ((safeSetback as number) > 0) {
+    warnings.push(`Fitted with a uniform ${safeSetback}ft setback from the lot line on all sides.`);
+  }
   if (k !== 0) warnings.push(`Rotated ${k * 90}° from the plan's original orientation to make it fit this lot.`);
   warnings.push(`All ${floors.length} floors fitted with the same rotation and position, so they stay stacked and aligned.`);
   const utilization = buildableAreaSqft > 0 ? (widestFootprintAreaSqft / buildableAreaSqft) * 100 : 0;

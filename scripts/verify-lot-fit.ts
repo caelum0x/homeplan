@@ -453,5 +453,65 @@ console.log(
   check("a genuinely too-small lot is honestly reported as infeasible for the multi-story fit", !tinyFit.feasible && !!tinyFit.error);
 }
 
+console.log(
+  "\n=== 12. Real per-edge (front/side/rear-style) setbacks on an arbitrary polygon — hand-computed numbers, not just 'did it run' ===",
+);
+{
+  // 80x120 rectangle, edges in point order: e0 bottom(front)=20ft, e1 right(side)=7ft,
+  // e2 top(rear)=15ft, e3 left(side)=7ft. Hand-computed expected buildable rect: x in
+  // [7,73] (width 66), y in [20,105] (height 85), area 5610 — each edge moves inward by its
+  // OWN distance, not a shared one.
+  const lot = [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 80, y: 120 }, { x: 0, y: 120 }];
+  const perEdgeSetbacks = [20, 7, 15, 7];
+  const eroded = insetPolygon(lot, perEdgeSetbacks);
+  check("per-edge erosion succeeded", !!eroded);
+  if (eroded) {
+    const b = polygonBounds(eroded);
+    check("buildable bounds match hand-computed per-edge erosion exactly", Math.abs(b.minX - 7) < 0.01 && Math.abs(b.maxX - 73) < 0.01 && Math.abs(b.minY - 20) < 0.01 && Math.abs(b.maxY - 105) < 0.01, JSON.stringify(b));
+    check("buildable area matches hand-computed 66x85=5610 sqft exactly", Math.abs(polygonArea(eroded) - 5610) < 0.5, `got ${polygonArea(eroded)}`);
+  }
+
+  // The SAME physical rectangle/edges, entered clockwise instead — this is the real proof the
+  // internal CCW-remap (ensureCCWWithSetback) attaches each setback to the correct physical lot
+  // line rather than the wrong one after reversal, not just "didn't throw."
+  const cwLot = [...lot].reverse();
+  const cwSetbacks = [15, 7, 20, 7]; // reindexed to cwLot's own edge order for the identical physical lines
+  const erodedCw = insetPolygon(cwLot, cwSetbacks);
+  check("clockwise-wound lot with remapped per-edge setbacks erodes to the byte-identical polygon as the CCW case", !!erodedCw && !!eroded && Math.abs(polygonArea(erodedCw) - polygonArea(eroded)) < 0.01);
+  if (erodedCw && eroded) {
+    const bCw = polygonBounds(erodedCw);
+    const b = polygonBounds(eroded);
+    check("CW-wound result has identical bounds to the CCW result", Math.abs(bCw.minX - b.minX) < 0.01 && Math.abs(bCw.maxX - b.maxX) < 0.01 && Math.abs(bCw.minY - b.minY) < 0.01 && Math.abs(bCw.maxY - b.maxY) < 0.01);
+  }
+
+  // End-to-end through the real public API with a real generated plan, not just the erosion
+  // primitive: fitPlanToLot must report the exact same 5610 sqft buildable area and a real
+  // warning naming the min/max of the entered setbacks.
+  const input = parseDescription("3-bedroom, 2-bath, ~1400 sqft, open-plan kitchen/living");
+  const plan = generateFloorPlan(input);
+  const result = fitPlanToLot(plan, lot, perEdgeSetbacks);
+  check("fitPlanToLot accepts a per-edge setback array end-to-end", result.feasible, result.error ?? undefined);
+  check("fitPlanToLot's reported buildableAreaSqft matches the hand-computed per-edge erosion", Math.abs((result.buildableAreaSqft ?? 0) - 5610) < 0.5, `got ${result.buildableAreaSqft}`);
+  check("fitPlanToLot's warnings name the real min/max of the entered per-edge setbacks (7 and 20)", result.warnings.some((w) => /7ft to 20ft/.test(w)), JSON.stringify(result.warnings));
+
+  // A per-edge array whose length doesn't match the lot's point count is a real input error,
+  // reported honestly rather than silently truncated/padded.
+  const mismatched = fitPlanToLot(plan, lot, [1, 2, 3]);
+  check("mismatched per-edge setback array length is rejected with a real explanatory error", !mismatched.feasible && !!mismatched.error && /one value per lot point/.test(mismatched.error), mismatched.error ?? "no error");
+
+  // Setbacks whose relative proportions can't all fit this lot shape report a real percentage
+  // scale-down, not a flat "too large" with no number (the per-edge counterpart of scenario 5).
+  const tooLargeLot = [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }, { x: 0, y: 40 }];
+  const tooLargeResult = fitPlanToLot(plan, tooLargeLot, [20, 20, 20, 20]);
+  check("disproportionate per-edge setbacks on a too-small lot are honestly infeasible", !tooLargeResult.feasible);
+  check("error names a real feasible-scale percentage for the entered per-edge setbacks", !!tooLargeResult.error && /\d+% of what you entered/.test(tooLargeResult.error), tooLargeResult.error ?? "no error");
+
+  // fitMultiStoryPlanToLot also accepts per-edge setbacks (same validation + plumbing).
+  const { floors: multiFloors } = generateMultiStoryPlan({ ...input, stories: 2 as const });
+  const multiResult = fitMultiStoryPlanToLot(multiFloors, lot, perEdgeSetbacks);
+  check("fitMultiStoryPlanToLot accepts a per-edge setback array end-to-end", multiResult.feasible, multiResult.error ?? undefined);
+  check("fitMultiStoryPlanToLot's buildableAreaSqft matches the same hand-computed erosion", Math.abs((multiResult.buildableAreaSqft ?? 0) - 5610) < 0.5, `got ${multiResult.buildableAreaSqft}`);
+}
+
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`}\n`);
 process.exit(failures === 0 ? 0 : 1);

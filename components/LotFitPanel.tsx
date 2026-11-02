@@ -48,10 +48,13 @@ export function LotFitPanel({ plan, floors, onApply, onApplyFloors }: LotFitPane
   const isMultiStory = (floors?.length ?? 0) > 1;
   const [pointsText, setPointsText] = useState(lotPointsToText(LOT_PRESETS[0].points));
   const [setbackText, setSetbackText] = useState("5");
+  const [perEdgeSetbacks, setPerEdgeSetbacks] = useState(false);
+  const [edgeSetbackText, setEdgeSetbackText] = useState("20\n7\n15\n7");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnyLotFitResult | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
+  const lotEdgeCount = parseLotPointsText(pointsText)?.length ?? 0;
 
   async function runFit() {
     setApplied(false);
@@ -62,10 +65,23 @@ export function LotFitPanel({ plan, floors, onApply, onApplyFloors }: LotFitPane
       return;
     }
     setParseError(null);
-    const setbackFt = setbackText.trim() === "" ? 0 : Number(setbackText.trim());
-    if (!Number.isFinite(setbackFt) || setbackFt < 0) {
-      setParseError("Setback must be a non-negative number of feet.");
-      return;
+
+    let setbackFt: number | number[];
+    if (perEdgeSetbacks) {
+      const lines = edgeSetbackText.split(/\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+      const values = lines.map(Number);
+      if (values.length !== lot.length || values.some((v) => !Number.isFinite(v) || v < 0)) {
+        setParseError(`Enter exactly one non-negative setback (ft) per line, matching the ${lot.length} lot boundary points above (one per lot line) — got ${values.length} value(s).`);
+        return;
+      }
+      setbackFt = values;
+    } else {
+      const uniform = setbackText.trim() === "" ? 0 : Number(setbackText.trim());
+      if (!Number.isFinite(uniform) || uniform < 0) {
+        setParseError("Setback must be a non-negative number of feet.");
+        return;
+      }
+      setbackFt = uniform;
     }
 
     setLoading(true);
@@ -114,8 +130,10 @@ export function LotFitPanel({ plan, floors, onApply, onApplyFloors }: LotFitPane
       <p style={{ fontSize: 12.5, color: "var(--color-ink-faint)", marginBottom: 14 }}>
         Enter your real lot as a polygon (any shape — not just a rectangle), in feet, one point per line as &ldquo;x, y&rdquo;, tracing the
         property line around once. This computes the plan&apos;s real exterior footprint (including any L-shape/garage/courtyard notch) and
-        checks whether it fits inside the lot after a uniform setback, rotating it in 90° steps if needed to make it fit. No resizing/scaling is
-        applied — if it genuinely doesn&apos;t fit even rotated, you&apos;ll get the real reason and real numbers, not a forced result.
+        checks whether it fits inside the lot after setbacks, rotating it in 90° steps if needed to make it fit. No resizing/scaling is
+        applied — if it genuinely doesn&apos;t fit even rotated, you&apos;ll get the real reason and real numbers, not a forced result. Setbacks
+        can be one value for every lot line, or a real, different value per lot line (e.g. a wider front-yard setback and narrower side-yard
+        setbacks) — most real zoning rules aren&apos;t uniform around the lot.
         {isMultiStory && (
           <span style={{ display: "block", marginTop: 6 }}>
             This plan has {floors!.length} floors — every floor is fit together with the exact same rotation and position, so they stay stacked
@@ -133,6 +151,7 @@ export function LotFitPanel({ plan, floors, onApply, onApplyFloors }: LotFitPane
             title={preset.description}
             onClick={() => {
               setPointsText(lotPointsToText(preset.points));
+              setEdgeSetbackText(new Array(preset.points.length).fill(setbackText.trim() || "5").join("\n"));
               setResult(null);
               setParseError(null);
             }}
@@ -155,18 +174,45 @@ export function LotFitPanel({ plan, floors, onApply, onApplyFloors }: LotFitPane
             value={pointsText}
             onChange={(e) => setPointsText(e.target.value)}
           />
-          <label className="field-label" style={{ marginTop: 10, display: "block" }} htmlFor="setback">
-            Uniform setback (ft)
+          <label style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+            <input
+              type="checkbox"
+              checked={perEdgeSetbacks}
+              onChange={(e) => setPerEdgeSetbacks(e.target.checked)}
+            />
+            Different setback per lot line
           </label>
-          <input
-            id="setback"
-            type="number"
-            min={0}
-            className="text-input"
-            style={{ width: "100%", padding: "6px 10px", fontSize: 13 }}
-            value={setbackText}
-            onChange={(e) => setSetbackText(e.target.value)}
-          />
+          {perEdgeSetbacks ? (
+            <>
+              <label className="field-label" style={{ marginTop: 6, display: "block" }} htmlFor="edge-setbacks">
+                Setback per lot line (ft) — one per line, same order as the lot boundary points above
+                {lotEdgeCount > 0 ? ` (${lotEdgeCount} line${lotEdgeCount === 1 ? "" : "s"})` : ""}
+              </label>
+              <textarea
+                id="edge-setbacks"
+                className="textarea"
+                rows={Math.max(4, lotEdgeCount || 4)}
+                style={{ fontSize: 12.5, fontFamily: "monospace" }}
+                value={edgeSetbackText}
+                onChange={(e) => setEdgeSetbackText(e.target.value)}
+              />
+            </>
+          ) : (
+            <>
+              <label className="field-label" style={{ marginTop: 6, display: "block" }} htmlFor="setback">
+                Uniform setback (ft)
+              </label>
+              <input
+                id="setback"
+                type="number"
+                min={0}
+                className="text-input"
+                style={{ width: "100%", padding: "6px 10px", fontSize: 13 }}
+                value={setbackText}
+                onChange={(e) => setSetbackText(e.target.value)}
+              />
+            </>
+          )}
           <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 10, width: "100%" }} onClick={runFit} disabled={loading}>
             {loading ? "Fitting…" : "Fit to lot"}
           </button>
