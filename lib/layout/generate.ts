@@ -609,15 +609,34 @@ export function listEligibleTopologies(
   const courtyardEligible = !lShaped && hasGarage && !openPlan && count >= 3 && courtyardWidthOk && courtyardDepthOk;
 
   const sideHallwayWidthOk = width - HALLWAY_WIDTH >= 9;
-  const sideHallwayEligible = count <= 4 && sideHallwayWidthOk;
+  const sideHallwayFixable = sideHallwayColumnStaysFixable(count, width, privateDepth);
+  const sideHallwayEligible = count <= 4 && sideHallwayWidthOk && sideHallwayFixable;
   const doubleRowEligible = privateDepth >= HALLWAY_WIDTH + 16;
 
   const result: PrivateTopology[] = [];
   if (courtyardEligible) result.push("courtyard");
   if (sideHallwayEligible) result.push("side-hallway");
   if (doubleRowEligible) result.push("double-row");
-  if (result.length === 0) result.push(sideHallwayWidthOk ? "side-hallway" : "single");
+  if (result.length === 0) result.push(sideHallwayWidthOk && sideHallwayFixable ? "side-hallway" : "single");
   return result;
+}
+
+/**
+ * A side-hallway column gives every room the full column width and a thin
+ * band of depth. `splitSliverRooms` can carve that shared width back only
+ * while the leftover closet stays within `CLOSET_MAX_DEPTH`. The 900 sqft
+ * cottage ("cozy 2 bedroom 1 bath cottage, 900 sqft") does not: the bathroom
+ * comes out 23' × 3.3' (6.9:1) and the carve bails, so the warning is the
+ * whole layout. That geometry is a single row, not a side-hallway.
+ */
+function sideHallwayColumnStaysFixable(count: number, width: number, privateDepth: number): boolean {
+  if (count <= 0) return false;
+  const columnWidth = width - HALLWAY_WIDTH;
+  const bandDepth = (privateDepth - HALLWAY_WIDTH) / count;
+  if (columnWidth < 9 || bandDepth <= 0) return false;
+  if (columnWidth / bandDepth <= MAX_SANE_ROOM_ASPECT) return true;
+  const deepestMain = bandDepth * MAX_SANE_ROOM_ASPECT;
+  return columnWidth - deepestMain <= CLOSET_MAX_DEPTH;
 }
 
 /**
@@ -647,9 +666,8 @@ function resolvePrivateTopology(
     // (same feasibility/sliver-warning machinery as every other count), so a variant
     // that explicitly wants it for a 5+ room program gets a real, structurally sound
     // (if deeper/narrower) layout instead of being silently refused one.
-    const sideHallwayWidthOk = width - HALLWAY_WIDTH >= 9;
     const preferenceEligible = new Set(naturalEligible);
-    if (sideHallwayWidthOk) preferenceEligible.add("side-hallway");
+    if (sideHallwayColumnStaysFixable(count, width, privateDepth)) preferenceEligible.add("side-hallway");
     const preferred = preferences.find((p) => preferenceEligible.has(p));
     if (preferred) return preferred;
   }
