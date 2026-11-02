@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { FloorPlan } from "@/lib/layout/types";
+import { checkZoningCompliance, R1_SUBURBAN_BASELINE, type ZoningComplianceResult } from "@/lib/layout/zoningRules";
 
 interface ZoningPanelProps {
   plan: FloorPlan;
@@ -28,6 +29,36 @@ const SUGGESTIONS = ["What setbacks usually apply to a house this size?", "Is th
  * here in the UI copy, not just assumed.
  */
 export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
+  const [lotWidthFt, setLotWidthFt] = useState("60");
+  const [lotDepthFt, setLotDepthFt] = useState("120");
+  const [frontSetbackFt, setFrontSetbackFt] = useState(String(R1_SUBURBAN_BASELINE.frontSetbackFt));
+  const [sideSetbackFt, setSideSetbackFt] = useState(String(R1_SUBURBAN_BASELINE.sideSetbackFt));
+  const [rearSetbackFt, setRearSetbackFt] = useState(String(R1_SUBURBAN_BASELINE.rearSetbackFt));
+  const [maxCoveragePct, setMaxCoveragePct] = useState(String(R1_SUBURBAN_BASELINE.maxLotCoveragePct));
+
+  const compliance = useMemo<ZoningComplianceResult | null>(() => {
+    const lotW = Number(lotWidthFt);
+    const lotD = Number(lotDepthFt);
+    const front = Number(frontSetbackFt);
+    const side = Number(sideSetbackFt);
+    const rear = Number(rearSetbackFt);
+    const maxPct = Number(maxCoveragePct);
+    if (![lotW, lotD, front, side, rear, maxPct].every((n) => Number.isFinite(n) && n >= 0) || lotW <= 0 || lotD <= 0 || maxPct <= 0) {
+      return null;
+    }
+    return checkZoningCompliance({
+      footprintAreaSqft: plan.totalAreaSqft,
+      footprintWFt: plan.footprint.w,
+      footprintHFt: plan.footprint.h,
+      lotWidthFt: lotW,
+      lotDepthFt: lotD,
+      frontSetbackFt: front,
+      sideSetbackFt: side,
+      rearSetbackFt: rear,
+      maxLotCoveragePct: maxPct,
+    });
+  }, [plan, lotWidthFt, lotDepthFt, frontSetbackFt, sideSetbackFt, rearSetbackFt, maxCoveragePct]);
+
   const [lotSizeInput, setLotSizeInput] = useState("");
   const [documentText, setDocumentText] = useState("");
   const [showDocument, setShowDocument] = useState(false);
@@ -73,10 +104,78 @@ export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
   }
 
   return (
-    <div className="panel" style={{ padding: 20 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 650, marginBottom: 4 }}>Zoning &amp; code assistant</h3>
-      <p style={{ fontSize: 12.5, color: "var(--color-ink-faint)", marginBottom: 14 }}>
-        Ask a plain-language question about setbacks, max height, lot coverage, or other building-code constraints for this plan. This has{" "}
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="panel" style={{ padding: 20 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 650, marginBottom: 4 }}>Setback &amp; lot-coverage check</h3>
+        <p style={{ fontSize: 12.5, color: "var(--color-ink-faint)", marginBottom: 14 }}>
+          Deterministic math, no AI: checks this plan&apos;s real footprint against a rectangular lot minus front/side/rear setbacks, and against a max
+          lot-coverage percentage. The defaults below are a <strong>{R1_SUBURBAN_BASELINE.label}</strong> — not any specific city or county&apos;s real
+          code. Edit every field to match your own local ordinance before relying on this for anything real. This slice only covers a{" "}
+          <strong>rectangular lot</strong> against this plan&apos;s rectangular bounding footprint — for an irregular lot, use the &ldquo;Fit to lot&rdquo;
+          tab instead (it supports any polygon, with one uniform setback rather than distinct front/side/rear distances). It does not check height limits,
+          accessory structures, or corner-lot double-frontage rules.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(90px, 1fr))", gap: 10, marginBottom: 14 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--color-ink-soft)" }}>
+            Lot width (ft)
+            <input type="number" min={0} className="text-input" style={{ padding: "6px 10px", fontSize: 13 }} value={lotWidthFt} onChange={(e) => setLotWidthFt(e.target.value)} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--color-ink-soft)" }}>
+            Lot depth (ft)
+            <input type="number" min={0} className="text-input" style={{ padding: "6px 10px", fontSize: 13 }} value={lotDepthFt} onChange={(e) => setLotDepthFt(e.target.value)} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--color-ink-soft)" }}>
+            Max lot coverage (%)
+            <input type="number" min={0} max={100} className="text-input" style={{ padding: "6px 10px", fontSize: 13 }} value={maxCoveragePct} onChange={(e) => setMaxCoveragePct(e.target.value)} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--color-ink-soft)" }}>
+            Front setback (ft)
+            <input type="number" min={0} className="text-input" style={{ padding: "6px 10px", fontSize: 13 }} value={frontSetbackFt} onChange={(e) => setFrontSetbackFt(e.target.value)} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--color-ink-soft)" }}>
+            Side setback (ft, each side)
+            <input type="number" min={0} className="text-input" style={{ padding: "6px 10px", fontSize: 13 }} value={sideSetbackFt} onChange={(e) => setSideSetbackFt(e.target.value)} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--color-ink-soft)" }}>
+            Rear setback (ft)
+            <input type="number" min={0} className="text-input" style={{ padding: "6px 10px", fontSize: 13 }} value={rearSetbackFt} onChange={(e) => setRearSetbackFt(e.target.value)} />
+          </label>
+        </div>
+
+        {compliance === null ? (
+          <div className="alert alert-warning" style={{ fontSize: 12.5 }}>
+            <span>Enter a positive lot width, lot depth, and max coverage percentage (setbacks may be 0).</span>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className={`alert ${compliance.coverage.pass ? "alert-success" : "alert-danger"}`} style={{ fontSize: 12.5 }}>
+              <span>
+                <strong>Lot coverage: {compliance.coverage.pass ? "PASS" : "FAIL"}</strong> — real building footprint {compliance.coverage.footprintAreaSqft} sqft
+                is {compliance.coverage.actualCoveragePct}% of the {compliance.coverage.lotAreaSqft} sqft lot (cap {compliance.coverage.maxCoveragePct}%).{" "}
+                {compliance.coverage.pass
+                  ? `${compliance.coverage.marginSqft} sqft of coverage headroom remains under the cap.`
+                  : `${Math.abs(compliance.coverage.marginSqft)} sqft over the cap.`}
+              </span>
+            </div>
+            <div className={`alert ${compliance.setback.pass ? "alert-success" : "alert-danger"}`} style={{ fontSize: 12.5 }}>
+              <span>
+                <strong>Setback clearance: {compliance.setback.pass ? "PASS" : "FAIL"}</strong> — buildable envelope after setbacks is{" "}
+                {compliance.setback.buildableWidthFt}&apos; x {compliance.setback.buildableDepthFt}&apos;; this plan&apos;s bounding footprint is{" "}
+                {compliance.setback.footprintWFt}&apos; x {compliance.setback.footprintHFt}&apos;.{" "}
+                {compliance.setback.pass
+                  ? `Fits ${compliance.setback.fittingOrientation === "rotated-90" ? "rotated 90° on the lot" : "as-generated"}, with ${compliance.setback.marginFt}' of clearance on the tightest side.`
+                  : "Does not fit the buildable envelope in either orientation (as-generated or rotated 90°)."}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="panel" style={{ padding: 20 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 650, marginBottom: 4 }}>Zoning &amp; code assistant</h3>
+        <p style={{ fontSize: 12.5, color: "var(--color-ink-faint)", marginBottom: 14 }}>
+          Ask a plain-language question about setbacks, max height, lot coverage, or other building-code constraints for this plan. This has{" "}
         <strong>no live database of any specific city or county&apos;s actual zoning code</strong> — without a pasted document, it answers with general,
         widely-common U.S. residential patterns and says so. Paste an excerpt of your real local ordinance below for a grounded answer instead of a
         general one. Always confirm with your local planning department or a licensed architect before relying on this for a permit.
@@ -164,6 +263,7 @@ export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
           {loading ? "Asking…" : "Ask"}
         </button>
       </form>
+      </div>
     </div>
   );
 }
