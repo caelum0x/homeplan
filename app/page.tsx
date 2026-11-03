@@ -634,7 +634,7 @@ export default function Home() {
               {viewMode === "studio" && <FloorPlanStudio key={`studio-${activeFloor}`} plan={plan} onChange={updatePlan} traceImageUrl={traceImageUrl} />}
               {viewMode === "3d" && <FloorPlan3D plan={plan} />}
               {viewMode === "render" && <AiRenderPanel plan={plan} />}
-              {viewMode === "zoning" && <ZoningPanel plan={plan} stories={floors ? (floors.length as 1 | 2) : 1} />}
+              {viewMode === "zoning" && <ZoningPanel plan={plan} stories={floors ? (floors.length as 1 | 2) : 1} floors={floors} />}
               {viewMode === "lot" && <LotFitPanel plan={plan} floors={floors} onApply={updatePlan} onApplyFloors={updateAllFloors} />}
             </div>
 

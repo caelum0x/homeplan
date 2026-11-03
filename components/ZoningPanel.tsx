@@ -5,8 +5,11 @@ import type { FloorPlan } from "@/lib/layout/types";
 import { checkZoningCompliance, R1_SUBURBAN_BASELINE, type ZoningComplianceResult } from "@/lib/layout/zoningRules";
 
 interface ZoningPanelProps {
+  /** The active floor — used for display/stories count, and as the zoning-geometry target only when `floors` is absent (single-story plans). */
   plan: FloorPlan;
   stories: 1 | 2;
+  /** Every floor of the active plan, ground floor first (matches app/page.tsx's own `floors` state). Lot coverage and setback clearance are real building-code checks against the lot — they must always use the ground floor's real footprint, which is what actually determines lot coverage, never whichever floor happens to be active in the editor. */
+  floors?: FloorPlan[] | null;
 }
 
 interface Exchange {
@@ -28,7 +31,13 @@ const SUGGESTIONS = ["What setbacks usually apply to a house this size?", "Is th
  * the honesty boundary is enforced in the assistant's own system prompt and repeated
  * here in the UI copy, not just assumed.
  */
-export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
+export function ZoningPanel({ plan, stories, floors }: ZoningPanelProps) {
+  // Lot coverage and setback clearance are determined by the ground-floor footprint, not
+  // whichever floor the editor happens to have active — a multi-story plan's upper floors
+  // commonly have a smaller footprint (e.g. no garage) but that never reduces real lot
+  // coverage, which is governed by the ground floor's footprint on the lot. Falls back to
+  // `plan` for single-story plans, where `floors` is null and `plan` IS the ground floor.
+  const groundFloorPlan = floors && floors.length > 0 ? floors[0] : plan;
   const [lotWidthFt, setLotWidthFt] = useState("60");
   const [lotDepthFt, setLotDepthFt] = useState("120");
   const [frontSetbackFt, setFrontSetbackFt] = useState(String(R1_SUBURBAN_BASELINE.frontSetbackFt));
@@ -56,9 +65,9 @@ export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
       return null;
     }
     return checkZoningCompliance({
-      footprintAreaSqft: plan.totalAreaSqft,
-      footprintWFt: plan.footprint.w,
-      footprintHFt: plan.footprint.h,
+      footprintAreaSqft: groundFloorPlan.totalAreaSqft,
+      footprintWFt: groundFloorPlan.footprint.w,
+      footprintHFt: groundFloorPlan.footprint.h,
       lotWidthFt: lotW,
       lotDepthFt: lotD,
       frontSetbackFt: front,
@@ -69,7 +78,7 @@ export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
       maxHeightFt: maxHeight,
       isCornerLot,
     });
-  }, [plan, stories, lotWidthFt, lotDepthFt, frontSetbackFt, sideSetbackFt, rearSetbackFt, maxCoveragePct, maxHeightFt, isCornerLot]);
+  }, [groundFloorPlan, stories, lotWidthFt, lotDepthFt, frontSetbackFt, sideSetbackFt, rearSetbackFt, maxCoveragePct, maxHeightFt, isCornerLot]);
 
   const [lotSizeInput, setLotSizeInput] = useState("");
   const [documentText, setDocumentText] = useState("");
