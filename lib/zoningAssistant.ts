@@ -22,6 +22,7 @@
 // user's actual, authoritative local code.
 
 import type { FloorPlan } from "./layout/types";
+import { R1_SUBURBAN_BASELINE } from "./layout/zoningRules";
 
 // Ordered by what this session actually confirmed live via direct OpenRouter calls
 // (fast, clean one-shot answers first; the two reasoning models last since they spend
@@ -114,7 +115,7 @@ function buildSystemPrompt(hasDocument: boolean): string {
     "You will be given real, computed facts about the specific floor plan the user just designed (footprint size, floor area, story count, room list, garage presence, a rough height estimate, and lot coverage if a lot size was given) — treat those as ground truth, they are real numbers from the actual plan, not invented.",
     hasDocument
       ? "You will also be given an excerpt of the user's own local zoning ordinance or building code, pasted by the user. Treat this pasted text as the ONLY authoritative source for jurisdiction-specific rules (setback distances, max height, max lot coverage, etc). If the pasted text does not clearly answer the question, say so plainly instead of guessing a specific number — you may still offer general context, clearly labeled as general, not from the document."
-      : "No local zoning document was provided. You have NO live database of any specific city, county, or jurisdiction's actual zoning code. Answer using general, widely-common U.S. residential zoning/building-code patterns ONLY (for rough orientation): front setbacks commonly 15-25 ft, side setbacks commonly 5-10 ft, rear setbacks commonly 10-25 ft, max building height in single-family zones commonly 30-35 ft or 2-2.5 stories, max lot coverage commonly 30-50% of lot area. You MUST explicitly state these are general/typical patterns and NOT this user's actual local code, every time you cite a number.",
+      : `No local zoning document was provided. You have NO live database of any specific city, county, or jurisdiction's actual zoning code. Answer using general, widely-common U.S. residential zoning/building-code patterns ONLY (for rough orientation): setbacks around ${R1_SUBURBAN_BASELINE.frontSetbackFt} ft front, ${R1_SUBURBAN_BASELINE.sideSetbackFt} ft side, ${R1_SUBURBAN_BASELINE.rearSetbackFt} ft rear, max building height in single-family zones commonly 30-35 ft or 2-2.5 stories, up to ${R1_SUBURBAN_BASELINE.maxLotCoveragePct}% lot coverage. You MUST explicitly state these are general/typical patterns and NOT this user's actual local code, every time you cite a number.`,
     "Reference the plan's real numbers when relevant (e.g. compute or reuse the given lot coverage %, compare the plan's height estimate against a typical limit).",
     "Keep the answer concise and practical: 3-6 sentences, plain language, no legal disclaimers boilerplate beyond one short closing reminder.",
     "Always end with exactly one short sentence reminding the user to confirm with their local planning/zoning department or a licensed architect before relying on this for an actual permit or build — this is general guidance, not a compliance check.",
