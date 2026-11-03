@@ -447,11 +447,23 @@ export function applyChatCommand(plan: FloorPlan, rawCommand: string): ChatEditR
   };
 }
 
+/**
+ * Picks a label for a chat-added room by COUNTING same-type rooms and assuming that
+ * count+1 is always free — real collision caught live while verifying the AI-assist
+ * fallback: on a generated 4-bed plan the `bedroom`-type rooms are already labeled
+ * "Bedroom 2"/"Bedroom 3"/"Bedroom 4" (Bedroom 1's slot is implicitly the Primary
+ * Bedroom), so a count of 3 produced "Bedroom 4" again, a real duplicate label.
+ * Fixed by checking the real existing LABELS directly and incrementing past whatever
+ * suffix is actually taken, instead of trusting the type count to predict a free one.
+ */
 function defaultLabelFor(type: RoomType, plan: FloorPlan): string {
-  const sameType = plan.rooms.filter((r) => r.type === type).length;
   const base = type
     .split("_")
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(" ");
-  return sameType === 0 ? base : `${base} ${sameType + 1}`;
+  const existingLabels = new Set(plan.rooms.map((r) => r.label));
+  if (!existingLabels.has(base)) return base;
+  let n = 2;
+  while (existingLabels.has(`${base} ${n}`)) n++;
+  return `${base} ${n}`;
 }
