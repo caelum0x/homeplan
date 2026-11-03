@@ -1,4 +1,10 @@
-import type { BriefInput, Door, FloorPlan, Room, RoomType, Wall } from "./types";
+import type { BriefInput, Door, FloorPlan, PrivateTopology, Room, RoomType, Wall } from "./types";
+
+// Re-exported so existing/future callers that import `PrivateTopology` from this file
+// (where every real topology-selection function documented below actually lives) keep
+// working — the type itself now lives in ./types to avoid a types.ts <-> generate.ts
+// import cycle now that `BriefInput.styleTopologyPreferences` (./types) needs it too.
+export type { PrivateTopology } from "./types";
 import { buildRoomProgram, getMinArea, type ProgramRoom } from "./program";
 import { allocateLengths, computeExteriorSegments, layoutColumn, layoutRow, sharedEdgeOverlap, type AllocItem, type Rect } from "./geometry";
 import { autoPlaceFurniture } from "./furniture";
@@ -167,7 +173,7 @@ export function computeBaselineAspectRatio(program: ReturnType<typeof buildRoomP
 export function generateFloorPlan(
   input: BriefInput,
   aspectRatio?: number,
-  /** See `LayoutVariant.privateTopologyPreferences` — honored only when the variant's own computed geometry below is structurally eligible for it. */
+  /** See `LayoutVariant.privateTopologyPreferences` — honored only when the variant's own computed geometry below is structurally eligible for it. Merged BEHIND `input.styleTopologyPreferences` below, so the user's own brief wording wins over this per-variant aesthetic default whenever both name a structurally-eligible topology. */
   privateTopologyPreferences?: PrivateTopology[],
 ): FloorPlan {
   const program = buildRoomProgram(input);
@@ -236,6 +242,17 @@ export function generateFloorPlan(
   }
 
   // ---- Private zone: bedrooms + bathrooms, in one or two rows around a hallway.
+  // The user's own brief wording (`input.styleTopologyPreferences` — see
+  // lib/parseDescription.ts) is tried BEFORE this call's variant preference, so a brief
+  // that actually says "courtyard" picks courtyard even for the "classic" variant (which
+  // carries no `privateTopologyPreferences` of its own, see LAYOUT_VARIANTS) — resolved
+  // against this call's real geometry by `resolvePrivateTopology`, same as any other
+  // preference: silently falls back when the requested topology isn't structurally
+  // eligible here. `effectiveTopologyPreferences` is undefined (not an empty array) when
+  // neither source has one, so a brief with no style keyword and a variant with no
+  // preference (e.g. "classic") is byte-for-byte unchanged from before this existed.
+  const combinedTopologyPreferences = [...(input.styleTopologyPreferences ?? []), ...(privateTopologyPreferences ?? [])];
+  const effectiveTopologyPreferences = combinedTopologyPreferences.length > 0 ? combinedTopologyPreferences : undefined;
   const privateZone = layoutPrivateZone(
     privateProgramRooms,
     privateWidth,
@@ -244,7 +261,7 @@ export function generateFloorPlan(
     !!program.garage,
     input.openPlan,
     lShaped,
-    privateTopologyPreferences,
+    effectiveTopologyPreferences,
   );
   for (const p of [...privateProgramRooms, ...privateZone.extraRooms]) {
     rooms.push(toRoom(p, privateZone.rects.get(p.id)!));
@@ -577,8 +594,10 @@ export function layoutPrivateZone(
  *   direct, linear circulation (great room flowing straight into the rest of
  *   the house), which doesn't pair naturally with a wing-and-void private
  *   zone — those programs stay on side-hallway/double-row instead.
+ *
+ * (`PrivateTopology` itself is defined in ./types — see the re-export above — purely to
+ * avoid an import cycle; every real topology-selection function below is still local.)
  */
-export type PrivateTopology = "single" | "side-hallway" | "double-row" | "courtyard";
 
 /**
  * Every private-zone topology that is *structurally* sound for this exact

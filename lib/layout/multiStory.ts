@@ -52,6 +52,7 @@ import {
   toAllocItem,
   toRoom,
   type FloorPlanOption,
+  type PrivateTopology,
 } from "./generate";
 
 /** Smallest clear stretch of shared wall worth putting a stair door in (gives a ≥2.4ft door at the 0.8 ratio buildWallsAndDoors uses). */
@@ -90,7 +91,7 @@ export function generateMultiStoryPlan(input: BriefInput, aspectRatio?: number):
   const stairsRect: Rect = { x: 0, y: 0, w: STAIRS_WIDTH, h: depth };
 
   const ground = layoutGroundFloor(program, zoneX, zoneW, depth);
-  const upper = layoutUpperFloor(program, zoneX, zoneW, depth, input.openPlan);
+  const upper = layoutUpperFloor(program, zoneX, zoneW, depth, input.openPlan, input.styleTopologyPreferences);
 
   // ---- Place the actual flight inside the shared strip so BOTH floors get a real door
   // at the correct end of it (bottom step downstairs, arrival landing upstairs).
@@ -316,12 +317,18 @@ function layoutUpperFloor(
   zoneW: number,
   depth: number,
   openPlan: boolean,
+  /** See `BriefInput.styleTopologyPreferences` (lib/layout/types.ts) — the user's own brief
+   * wording, tried the same as the single-story engine does in generateFloorPlan. Still
+   * subject to the same structural eligibility as always: a "courtyard" preference is a
+   * no-op up here regardless, since `hasGarage=false` below already keeps that topology
+   * off the table for the upper floor (see the comment on that call). */
+  topologyPreferences?: PrivateTopology[],
 ): FloorLayout {
   const warnings: string[] = [];
   const items = [...program.bedrooms, ...program.privateBaths];
   // hasGarage=false: the courtyard topology (an open-air void between wings) is a
   // ground-level pattern — upstairs it would be a hole in the roof over the rooms below.
-  const zone = layoutPrivateZone(items, zoneW, 0, depth, false, openPlan);
+  const zone = layoutPrivateZone(items, zoneW, 0, depth, false, openPlan, false, topologyPreferences);
   const shift = (r: Rect): Rect => ({ ...r, x: r.x + zoneX });
 
   const rooms: Room[] = [...items, ...zone.extraRooms].map((p) => toRoom(p, shift(zone.rects.get(p.id)!)));

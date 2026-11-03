@@ -149,6 +149,17 @@ export interface FloorPlan {
   wallColor?: string;
 }
 
+/**
+ * The private (bedroom) zone's genuinely distinct layout shapes — see
+ * `listEligibleTopologies`/`resolvePrivateTopology` in `lib/layout/generate.ts` for the
+ * full real documentation of what each one means and when it's structurally eligible.
+ * Defined here (not in generate.ts, which is where it conceptually belongs and where it's
+ * re-exported from) so `BriefInput.styleTopologyPreferences` below can reference it without
+ * types.ts importing from generate.ts — generate.ts already imports `BriefInput` etc. from
+ * this file, so the reverse import would be a cycle.
+ */
+export type PrivateTopology = "single" | "side-hallway" | "double-row" | "courtyard";
+
 export interface BriefInput {
   bedrooms: number;
   bathrooms: number;
@@ -174,4 +185,17 @@ export interface BriefInput {
    * topology (see pickPrivateTopology).
    */
   lShaped?: boolean;
+  /**
+   * Ordered private-zone topology preferences parsed from the user's own free-text brief
+   * (see lib/parseDescription.ts's STYLE_TOPOLOGY_PATTERNS) — e.g. the word "courtyard"
+   * produces `["courtyard"]`, and a brief mentioning both "courtyard" and "center hall"
+   * produces `["courtyard", "double-row"]` in the order they appear in the text. This is
+   * distinct from `LayoutVariant.privateTopologyPreferences` (lib/layout/generate.ts),
+   * which is the engine's own per-variant aesthetic default — this is the user's own
+   * explicit intent, and `generateFloorPlan` merges it ahead of the variant's preference
+   * so it wins whenever both are structurally eligible. Undefined = no style keyword
+   * found in the brief, defer entirely to the variant/engine defaults (unchanged behavior
+   * for every existing brief/caller).
+   */
+  styleTopologyPreferences?: PrivateTopology[];
 }
