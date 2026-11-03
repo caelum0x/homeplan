@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FloorPlanSvg } from "@/components/FloorPlanSvg";
 import { FloorPlanStudio } from "@/components/FloorPlanStudio";
-import { FloorPlan3D } from "@/components/FloorPlan3D";
+import { FloorPlan3D, type FloorPlan3DHandle } from "@/components/FloorPlan3D";
 import { AiRenderPanel } from "@/components/AiRenderPanel";
 import { ZoningPanel } from "@/components/ZoningPanel";
 import { LotFitPanel } from "@/components/LotFitPanel";
@@ -80,7 +80,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [viewMode, setViewMode] = useState<ViewMode>("plan");
-  const [exporting, setExporting] = useState<"pdf" | "dxf" | "png" | null>(null);
+  const [exporting, setExporting] = useState<"pdf" | "dxf" | "png" | "3d" | null>(null);
+  const floorPlan3DRef = useRef<FloorPlan3DHandle>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [entryMode, setEntryMode] = useState<EntryMode>("describe");
   const [traceImageUrl, setTraceImageUrl] = useState<string | null>(null);
@@ -231,6 +232,37 @@ export default function Home() {
     } catch (err) {
       if (err instanceof ProRequiredError) setProUpgradeNeeded(true);
       setError(err instanceof Error ? err.message : `Could not export ${format.toUpperCase()}.`);
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  // Real geometry-grounded 3D render export — a genuine Maket.ai feature-parity gap (their
+  // headline "photorealistic 3D renders" / "2D to 3D" / "Share & Export"): HomePlan already
+  // builds a real Three.js scene with solid CSG walls, cut door/window openings, stairs, and
+  // furniture (components/FloorPlan3D.tsx) for the interactive orbit view, but until now there
+  // was no way to save it — the only "render" a visitor could download was the honestly-labeled,
+  // non-geometry-grounded AI style moodboard. This captures the exact on-screen 3D scene (same
+  // camera, same lighting, same real coordinates) at a higher pixel density than the live canvas.
+  function handleExport3dRender() {
+    if (!plan) return;
+    setExporting("3d");
+    setError(null);
+    try {
+      const dataUrl = floorPlan3DRef.current?.captureImage();
+      if (!dataUrl) {
+        setError("Could not capture the 3D render — open the 3D view tab first, then try again.");
+        return;
+      }
+      const floorSuffix = floors ? `-floor-${activeFloor + 1}` : "";
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `homeplan-3d-render${floorSuffix}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not export the 3D render.");
     } finally {
       setExporting(null);
     }
@@ -632,7 +664,21 @@ export default function Home() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
               {viewMode === "plan" && <FloorPlanSvg plan={plan} />}
               {viewMode === "studio" && <FloorPlanStudio key={`studio-${activeFloor}`} plan={plan} onChange={updatePlan} traceImageUrl={traceImageUrl} />}
-              {viewMode === "3d" && <FloorPlan3D plan={plan} />}
+              {viewMode === "3d" && (
+                <div>
+                  <FloorPlan3D ref={floorPlan3DRef} plan={plan} />
+                  <button
+                    type="button"
+                    onClick={handleExport3dRender}
+                    disabled={exporting !== null}
+                    className="btn btn-secondary btn-sm"
+                    style={{ marginTop: 10 }}
+                  >
+                    <DownloadIcon />
+                    {exporting === "3d" ? "Exporting…" : "Download 3D render (PNG)"}
+                  </button>
+                </div>
+              )}
               {viewMode === "render" && <AiRenderPanel plan={plan} />}
               {viewMode === "zoning" && <ZoningPanel plan={plan} stories={floors ? (floors.length as 1 | 2) : 1} floors={floors} />}
               {viewMode === "lot" && <LotFitPanel plan={plan} floors={floors} onApply={updatePlan} onApplyFloors={updateAllFloors} />}

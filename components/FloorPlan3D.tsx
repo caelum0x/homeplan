@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
@@ -397,14 +397,57 @@ interface FloorPlan3DProps {
  * slab / wall / door gap has the actual coordinates from `plan`. Orbit
  * controls let the architect walk the camera around and look inside.
  */
-export function FloorPlan3D({
-  plan,
-  cameraRadiusFactor = 0.8,
-  cameraElevationFactor = 1.75,
-  wallHeightFactor = 1,
-}: FloorPlan3DProps) {
+/** Exposed to the host page so a toolbar button outside this component can trigger a real
+ * export of exactly what's on screen — no second render pipeline, no AI call, the same
+ * CSG walls/doors/windows/furniture/stairs geometry the live orbit view already shows. */
+export interface FloorPlan3DHandle {
+  /** Returns a `data:image/png;base64,...` URL of the current scene at a higher pixel
+   * density than the live canvas, or `null` if the scene isn't mounted/ready (WebGL
+   * unsupported, or called before the first real frame). Never throws. */
+  captureImage: () => string | null;
+}
+
+export const FloorPlan3D = forwardRef<FloorPlan3DHandle, FloorPlan3DProps>(function FloorPlan3D(
+  { plan, cameraRadiusFactor = 0.8, cameraElevationFactor = 1.75, wallHeightFactor = 1 },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "unsupported">("loading");
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const dimsRef = useRef<{ width: number; height: number }>({ width: 800, height: 520 });
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      captureImage: () => {
+        const renderer = rendererRef.current;
+        const scene = sceneRef.current;
+        const camera = cameraRef.current;
+        if (!renderer || !scene || !camera) return null;
+        const { width, height } = dimsRef.current;
+        const originalPixelRatio = renderer.getPixelRatio();
+        // Render one extra frame at a higher pixel density than the live view uses — a real
+        // export deserves more detail than the 520px-tall on-screen canvas, but we don't want
+        // to permanently resize the interactive view just to take a snapshot.
+        const exportPixelRatio = Math.min(4, Math.max(2, originalPixelRatio * 2));
+        try {
+          renderer.setPixelRatio(exportPixelRatio);
+          renderer.setSize(width, height, false);
+          renderer.render(scene, camera);
+          return renderer.domElement.toDataURL("image/png");
+        } catch {
+          return null;
+        } finally {
+          renderer.setPixelRatio(originalPixelRatio);
+          renderer.setSize(width, height, false);
+          renderer.render(scene, camera);
+        }
+      },
+    }),
+    [],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -418,16 +461,22 @@ export function FloorPlan3D({
     const width = container.clientWidth || 800;
     const height = 520;
 
+    dimsRef.current = { width, height };
+
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, failIfMajorPerformanceCaveat: false });
+      // preserveDrawingBuffer: captureImage() above calls toDataURL() on this same canvas;
+      // without this flag some browsers can clear the drawing buffer before that read happens.
+      renderer = new THREE.WebGLRenderer({ antialias: true, failIfMajorPerformanceCaveat: false, preserveDrawingBuffer: true });
     } catch {
       setStatus("unsupported");
       return;
     }
+    rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf5f5f4);
+    sceneRef.current = scene;
 
     const centerX = plan.footprint.w / 2;
     const centerZ = plan.footprint.h / 2;
@@ -438,6 +487,7 @@ export function FloorPlan3D({
     // perspective camera (no extra orthographic-camera plumbing needed for this honest massing view).
     const camera = new THREE.PerspectiveCamera(26, width / height, 0.1, 1000);
     camera.position.set(centerX + diag * cameraRadiusFactor, diag * cameraElevationFactor, centerZ + diag * cameraRadiusFactor);
+    cameraRef.current = camera;
 
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -589,6 +639,7 @@ export function FloorPlan3D({
 
     function handleResize() {
       const w = container?.clientWidth || 800;
+      dimsRef.current = { width: w, height };
       camera.aspect = w / height;
       camera.updateProjectionMatrix();
       renderer.setSize(w, height);
@@ -601,6 +652,9 @@ export function FloorPlan3D({
       controls.dispose();
       renderer.dispose();
       container.innerHTML = "";
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
     };
   }, [plan, cameraRadiusFactor, cameraElevationFactor, wallHeightFactor]);
 
@@ -632,7 +686,7 @@ export function FloorPlan3D({
       </p>
     </div>
   );
-}
+});
 
 /**
  * See the "Stairs" comment in the scene setup above. Coordinates match every other mesh: x =
