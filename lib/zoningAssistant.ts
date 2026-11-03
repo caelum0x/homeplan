@@ -22,7 +22,7 @@
 // user's actual, authoritative local code.
 
 import type { FloorPlan } from "./layout/types";
-import { R1_SUBURBAN_BASELINE } from "./layout/zoningRules";
+import { R1_SUBURBAN_BASELINE, roughHeightEstimateRangeFt } from "./layout/zoningRules";
 
 // Ordered by what this session actually confirmed live via direct OpenRouter calls
 // (fast, clean one-shot answers first; the two reasoning models last since they spend
@@ -62,11 +62,18 @@ export function planToFacts(plan: FloorPlan, stories: 1 | 2): PlanFacts {
   };
 }
 
-/** Rough, explicitly-labeled estimate — there is no real wall-height field anywhere in the plan data model, so this is never presented as computed fact. */
+/**
+ * Rough, explicitly-labeled estimate — there is no real wall-height field anywhere in the
+ * plan data model, so this is never presented as computed fact. The numbers come from
+ * `roughHeightEstimateRangeFt` (lib/layout/zoningRules.ts), the single source of truth
+ * also reused by that module's `checkHeightLimit` deterministic check, so this prose and
+ * that check can never silently disagree about what "the honest estimate" is.
+ */
 function roughHeightEstimate(stories: 1 | 2): string {
+  const { minFt, maxFt } = roughHeightEstimateRangeFt(stories);
   return stories === 2
-    ? "roughly 20-24 ft to the roof ridge (rough estimate: two ~9-10 ft stories plus roof — not a real structural calculation)"
-    : "roughly 15-18 ft to the roof ridge (rough estimate: one ~9-10 ft story plus roof — not a real structural calculation)";
+    ? `roughly ${minFt}-${maxFt} ft to the roof ridge (rough estimate: two ~9-10 ft stories plus roof — not a real structural calculation)`
+    : `roughly ${minFt}-${maxFt} ft to the roof ridge (rough estimate: one ~9-10 ft story plus roof — not a real structural calculation)`;
 }
 
 /**

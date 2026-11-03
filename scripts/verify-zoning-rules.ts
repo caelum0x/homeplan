@@ -3,7 +3,15 @@
 // hand-computed expectations. See plans/homeplan.md for how this was used.
 import { parseDescription } from "../lib/parseDescription";
 import { generateFloorPlan } from "../lib/layout/generate";
-import { checkLotCoverage, checkSetbackClearance, checkZoningCompliance, R1_SUBURBAN_BASELINE } from "../lib/layout/zoningRules";
+import {
+  checkCornerLotSetback,
+  checkHeightLimit,
+  checkLotCoverage,
+  checkSetbackClearance,
+  checkZoningCompliance,
+  R1_SUBURBAN_BASELINE,
+  roughHeightEstimateRangeFt,
+} from "../lib/layout/zoningRules";
 
 let failures = 0;
 function check(label: string, cond: boolean, detail?: string) {
@@ -61,6 +69,54 @@ console.log("\n=== Pure math: checkSetbackClearance ===");
   check("buildableWidthFt negative (20 - 30 = -10)", r4.buildableWidthFt === -10, String(r4.buildableWidthFt));
 }
 
+console.log("\n=== Pure math: checkHeightLimit ===");
+{
+  // Estimate 24 (2-story upper bound), cap 35 -> pass, margin = 35-24 = 11.
+  const r = checkHeightLimit(24, 35);
+  check("24ft estimate under 35ft cap -> pass", r.pass === true);
+  check("marginFt == 11", Math.abs(r.marginFt - 11) < 0.01, String(r.marginFt));
+
+  // Estimate 24, cap 20 -> fail, margin = 20-24 = -4.
+  const r2 = checkHeightLimit(24, 20);
+  check("24ft estimate over 20ft cap -> fail", r2.pass === false);
+  check("marginFt == -4", Math.abs(r2.marginFt - -4) < 0.01, String(r2.marginFt));
+
+  // Exact boundary: estimate == cap exactly -> pass (margin 0, >= 0 is pass).
+  const r3 = checkHeightLimit(35, 35);
+  check("exact boundary (margin 0) -> pass", r3.pass === true, String(r3.marginFt));
+
+  // roughHeightEstimateRangeFt sanity: 2-story range is 20-24, 1-story is 15-18 — the
+  // same numbers lib/zoningAssistant.ts's roughHeightEstimate() prose cites.
+  const twoStory = roughHeightEstimateRangeFt(2);
+  check("2-story range is 20-24", twoStory.minFt === 20 && twoStory.maxFt === 24, JSON.stringify(twoStory));
+  const oneStory = roughHeightEstimateRangeFt(1);
+  check("1-story range is 15-18", oneStory.minFt === 15 && oneStory.maxFt === 18, JSON.stringify(oneStory));
+}
+
+console.log("\n=== Pure math: checkCornerLotSetback ===");
+{
+  // Same lot as the mid-block checkSetbackClearance case above: 60x120, front 20, side 7,
+  // rear 15. Mid-block buildable width = 60 - 2*7 = 46. Corner-lot buildable width instead
+  // loses front(20) + side(7) = 60 - 27 = 33 — strictly tighter than the mid-block 46.
+  const r = checkCornerLotSetback(40, 50, 60, 120, 20, 7, 15);
+  check("corner buildableWidthFt == 33 (60 - 20 - 7)", r.buildableWidthFt === 33, String(r.buildableWidthFt));
+  check("corner buildableDepthFt == 85 (unchanged from mid-block: 120 - 20 - 15)", r.buildableDepthFt === 85, String(r.buildableDepthFt));
+  // 40x50 footprint: mid-block passed (40<=46) but corner-lot fails (40>33) in either orientation
+  // (rotated would need 50<=33, also false).
+  check("40x50 footprint that passes mid-block FAILS corner-lot (40 > 33 either way)", r.pass === false, JSON.stringify(r));
+
+  // A narrower footprint (30x50) that DOES fit the tighter corner envelope (30<=33, 50<=85).
+  const r2 = checkCornerLotSetback(30, 50, 60, 120, 20, 7, 15);
+  check("30x50 footprint fits corner envelope as-generated", r2.pass === true && r2.fittingOrientation === "as-generated", JSON.stringify(r2));
+  check("corner margin == min(33-30, 85-50) == 3", Math.abs(r2.marginFt - 3) < 0.01, String(r2.marginFt));
+
+  // Sanity: with the baseline's own numbers (front 20 >= side 7), the corner-lot buildable
+  // width is always <= the mid-block buildable width (33 <= 46 above) — a real additional
+  // constraint, not a cosmetic relabel of the same math.
+  const midBlock = checkSetbackClearance(40, 50, 60, 120, 20, 7, 15);
+  check("corner buildableWidthFt <= mid-block buildableWidthFt", r.buildableWidthFt <= midBlock.buildableWidthFt, `${r.buildableWidthFt} vs ${midBlock.buildableWidthFt}`);
+}
+
 // --- 2. Real generated plans through the actual engine ---
 console.log("\n=== Real generated plans ===");
 {
@@ -80,7 +136,12 @@ console.log("\n=== Real generated plans ===");
     sideSetbackFt: R1_SUBURBAN_BASELINE.sideSetbackFt,
     rearSetbackFt: R1_SUBURBAN_BASELINE.rearSetbackFt,
     maxLotCoveragePct: R1_SUBURBAN_BASELINE.maxLotCoveragePct,
+    stories: 1,
+    maxHeightFt: R1_SUBURBAN_BASELINE.maxHeightFt,
+    isCornerLot: false,
   });
+  check("roomy lot, not a corner lot: cornerSetback is null", roomyResult.cornerSetback === null);
+  check("roomy lot: 1-story height estimate (18ft) passes 35ft cap", roomyResult.height.pass === true, JSON.stringify(roomyResult.height));
   // Hand-cross-check: 80x150=12000 sqft lot, buildable envelope (80-14)x(150-35) = 66x115.
   const expectedLotArea = 80 * 150;
   const expectedCoveragePct = (plan.totalAreaSqft / expectedLotArea) * 100;
@@ -106,9 +167,22 @@ console.log("\n=== Real generated plans ===");
     sideSetbackFt: R1_SUBURBAN_BASELINE.sideSetbackFt,
     rearSetbackFt: R1_SUBURBAN_BASELINE.rearSetbackFt,
     maxLotCoveragePct: R1_SUBURBAN_BASELINE.maxLotCoveragePct,
+    // Also exercise the corner-lot + height paths on this same real plan: a corner lot
+    // (stricter setback) and a deliberately low height cap (10ft) that a 1-story plan's
+    // honest ~18ft estimate must fail.
+    stories: 1,
+    maxHeightFt: 10,
+    isCornerLot: true,
   });
   check("tiny 25x40 lot: real plan fails lot coverage", tinyResult.coverage.pass === false, JSON.stringify(tinyResult.coverage));
   check("tiny 25x40 lot: real plan fails setback clearance", tinyResult.setback.pass === false, JSON.stringify(tinyResult.setback));
+  check("tiny 25x40 corner lot: real plan fails corner-lot setback", tinyResult.cornerSetback !== null && tinyResult.cornerSetback.pass === false, JSON.stringify(tinyResult.cornerSetback));
+  check(
+    "corner-lot buildableWidthFt (25-20-7=-2) is tighter than mid-block buildableWidthFt (25-2*7=11)",
+    tinyResult.cornerSetback !== null && tinyResult.cornerSetback.buildableWidthFt === -2 && tinyResult.cornerSetback.buildableWidthFt < tinyResult.setback.buildableWidthFt,
+    JSON.stringify({ corner: tinyResult.cornerSetback?.buildableWidthFt, midBlock: tinyResult.setback.buildableWidthFt }),
+  );
+  check("10ft cap: real 1-story plan's ~18ft estimate fails height limit", tinyResult.height.pass === false, JSON.stringify(tinyResult.height));
   check("overallPass false on tiny lot", tinyResult.overallPass === false);
   check(
     "tiny lot buildable envelope negative/near-zero on depth (40-20-15=5)",

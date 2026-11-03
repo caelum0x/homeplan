@@ -35,6 +35,8 @@ export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
   const [sideSetbackFt, setSideSetbackFt] = useState(String(R1_SUBURBAN_BASELINE.sideSetbackFt));
   const [rearSetbackFt, setRearSetbackFt] = useState(String(R1_SUBURBAN_BASELINE.rearSetbackFt));
   const [maxCoveragePct, setMaxCoveragePct] = useState(String(R1_SUBURBAN_BASELINE.maxLotCoveragePct));
+  const [maxHeightFt, setMaxHeightFt] = useState(String(R1_SUBURBAN_BASELINE.maxHeightFt));
+  const [isCornerLot, setIsCornerLot] = useState(false);
 
   const compliance = useMemo<ZoningComplianceResult | null>(() => {
     const lotW = Number(lotWidthFt);
@@ -43,7 +45,14 @@ export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
     const side = Number(sideSetbackFt);
     const rear = Number(rearSetbackFt);
     const maxPct = Number(maxCoveragePct);
-    if (![lotW, lotD, front, side, rear, maxPct].every((n) => Number.isFinite(n) && n >= 0) || lotW <= 0 || lotD <= 0 || maxPct <= 0) {
+    const maxHeight = Number(maxHeightFt);
+    if (
+      ![lotW, lotD, front, side, rear, maxPct, maxHeight].every((n) => Number.isFinite(n) && n >= 0) ||
+      lotW <= 0 ||
+      lotD <= 0 ||
+      maxPct <= 0 ||
+      maxHeight <= 0
+    ) {
       return null;
     }
     return checkZoningCompliance({
@@ -56,8 +65,11 @@ export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
       sideSetbackFt: side,
       rearSetbackFt: rear,
       maxLotCoveragePct: maxPct,
+      stories,
+      maxHeightFt: maxHeight,
+      isCornerLot,
     });
-  }, [plan, lotWidthFt, lotDepthFt, frontSetbackFt, sideSetbackFt, rearSetbackFt, maxCoveragePct]);
+  }, [plan, stories, lotWidthFt, lotDepthFt, frontSetbackFt, sideSetbackFt, rearSetbackFt, maxCoveragePct, maxHeightFt, isCornerLot]);
 
   const [lotSizeInput, setLotSizeInput] = useState("");
   const [documentText, setDocumentText] = useState("");
@@ -108,12 +120,14 @@ export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
       <div className="panel" style={{ padding: 20 }}>
         <h3 style={{ fontSize: 15, fontWeight: 650, marginBottom: 4 }}>Setback &amp; lot-coverage check</h3>
         <p style={{ fontSize: 12.5, color: "var(--color-ink-faint)", marginBottom: 14 }}>
-          Deterministic math, no AI: checks this plan&apos;s real footprint against a rectangular lot minus front/side/rear setbacks, and against a max
-          lot-coverage percentage. The defaults below are a <strong>{R1_SUBURBAN_BASELINE.label}</strong> — not any specific city or county&apos;s real
-          code. Edit every field to match your own local ordinance before relying on this for anything real. This slice only covers a{" "}
+          Deterministic math, no AI: checks this plan&apos;s real footprint against a rectangular lot minus front/side/rear setbacks, against a max
+          lot-coverage percentage, against a max height limit, and — when the corner-lot box below is checked — against the stricter double-frontage
+          setback a corner lot actually requires. The defaults below are a <strong>{R1_SUBURBAN_BASELINE.label}</strong> — not any specific city or
+          county&apos;s real code. Edit every field to match your own local ordinance before relying on this for anything real. This slice only covers a{" "}
           <strong>rectangular lot</strong> against this plan&apos;s rectangular bounding footprint — for an irregular lot, use the &ldquo;Fit to lot&rdquo;
-          tab instead (it supports any polygon, with one uniform setback rather than distinct front/side/rear distances). It does not check height limits,
-          accessory structures, or corner-lot double-frontage rules.
+          tab instead (it supports any polygon, with one uniform setback rather than distinct front/side/rear distances). The height check compares the
+          baseline&apos;s own rough, explicitly-labeled height estimate (there is no real wall-height field in the plan data) against your max height —
+          it does not check accessory structures.
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(90px, 1fr))", gap: 10, marginBottom: 14 }}>
@@ -141,6 +155,14 @@ export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
             Rear setback (ft)
             <input type="number" min={0} className="text-input" style={{ padding: "6px 10px", fontSize: 13 }} value={rearSetbackFt} onChange={(e) => setRearSetbackFt(e.target.value)} />
           </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--color-ink-soft)" }}>
+            Max height (ft)
+            <input type="number" min={0} className="text-input" style={{ padding: "6px 10px", fontSize: 13 }} value={maxHeightFt} onChange={(e) => setMaxHeightFt(e.target.value)} />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--color-ink-soft)" }}>
+            <input type="checkbox" checked={isCornerLot} onChange={(e) => setIsCornerLot(e.target.checked)} />
+            Corner lot (two street-facing sides)
+          </label>
         </div>
 
         {compliance === null ? (
@@ -166,6 +188,27 @@ export function ZoningPanel({ plan, stories }: ZoningPanelProps) {
                 {compliance.setback.pass
                   ? `Fits ${compliance.setback.fittingOrientation === "rotated-90" ? "rotated 90° on the lot" : "as-generated"}, with ${compliance.setback.marginFt}' of clearance on the tightest side.`
                   : "Does not fit the buildable envelope in either orientation (as-generated or rotated 90°)."}
+              </span>
+            </div>
+            {compliance.cornerSetback && (
+              <div className={`alert ${compliance.cornerSetback.pass ? "alert-success" : "alert-danger"}`} style={{ fontSize: 12.5 }}>
+                <span>
+                  <strong>Corner-lot setback: {compliance.cornerSetback.pass ? "PASS" : "FAIL"}</strong> — both street-facing sides use the larger front
+                  setback, leaving a {compliance.cornerSetback.buildableWidthFt}&apos; x {compliance.cornerSetback.buildableDepthFt}&apos; buildable
+                  envelope.{" "}
+                  {compliance.cornerSetback.pass
+                    ? `Fits ${compliance.cornerSetback.fittingOrientation === "rotated-90" ? "rotated 90° on the lot" : "as-generated"}, with ${compliance.cornerSetback.marginFt}' of clearance on the tightest side.`
+                    : "Does not fit the double-frontage buildable envelope in either orientation."}
+                </span>
+              </div>
+            )}
+            <div className={`alert ${compliance.height.pass ? "alert-success" : "alert-danger"}`} style={{ fontSize: 12.5 }}>
+              <span>
+                <strong>Height limit: {compliance.height.pass ? "PASS" : "FAIL"}</strong> — rough estimated height {compliance.height.estimatedHeightFt}&apos;
+                against a {compliance.height.maxHeightFt}&apos; cap.{" "}
+                {compliance.height.pass
+                  ? `${compliance.height.marginFt}' of headroom remains under the cap.`
+                  : `${Math.abs(compliance.height.marginFt)}' over the cap.`}
               </span>
             </div>
           </div>
