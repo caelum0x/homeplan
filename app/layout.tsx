@@ -25,6 +25,14 @@ export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),
   title: TITLE,
   description: DESCRIPTION,
+  // Real gap found 2026-11-04 SEO audit: no canonical tag existed anywhere (grepped
+  // app/ for "canonical" before this, zero hits), and the live production URL is a
+  // free-tier Vercel subdomain (homeplan-arhansubas-projects.vercel.app) that can grow
+  // preview-deployment duplicates over time — a canonical pointing at the real
+  // production origin is what tells search engines which URL actually counts.
+  alternates: {
+    canonical: "/",
+  },
   // Real Open Graph/Twitter Card tags — previously missing entirely (confirmed by the
   // 2026-10-27 hero-image session: it grepped layout.tsx/page.tsx for any og:image/
   // twitter:image reference and found none). Without these, every share of this link on
@@ -49,11 +57,54 @@ export const metadata: Metadata = {
   },
 };
 
+// Real gap found 2026-11-04 SEO audit: zero JSON-LD anywhere (grepped app/, components/,
+// lib/ for "application/ld+json" before this, zero hits) — no SoftwareApplication/Product
+// rich-result eligibility at all. Every field below is a real, already-live fact pulled
+// from this exact codebase, not invented: price/billing period match PricingCta.tsx's
+// "$49/mo" copy and app/api/checkout/route.ts's real Dodo subscription; "free" single-story
+// usage matches the same component's "free and unlimited here" line; featureList mirrors
+// the feature cards already rendered in app/page.tsx. No aggregateRating/review — there are
+// none yet, and inventing one would violate Google's structured-data guidelines.
+const STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "HomePlan",
+  url: APP_URL,
+  description: DESCRIPTION,
+  applicationCategory: "DesignApplication",
+  operatingSystem: "Web",
+  image: `${APP_URL}/hero-3d.png`,
+  offers: [
+    {
+      "@type": "Offer",
+      name: "Free",
+      price: "0",
+      priceCurrency: "USD",
+      description: "Single-story rectangular layouts, Studio editing, 3D view, and PNG export — free and unlimited.",
+    },
+    {
+      "@type": "Offer",
+      name: "HomePlan Pro",
+      price: "49",
+      priceCurrency: "USD",
+      billingDuration: "P1M",
+      description: "Multi-story plans, L-shaped footprints, and PDF/DXF/IFC export on the hosted site.",
+    },
+  ],
+  isAccessibleForFree: true,
+  license: "https://github.com/caelum0x/homeplan/blob/main/LICENSE",
+};
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
         {children}
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }}
+        />
         {/* Railyard Insights (railyard/apps/product-analytics): cookieless page tag plus
             custom `railyard.track()` events for the real plan-generated -> checkout-started
             funnel (lib/track.ts, app/page.tsx, components/PricingCta.tsx). Site key is this

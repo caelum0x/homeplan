@@ -413,6 +413,19 @@ export default function Home() {
                 src="/hero-3d.png"
                 alt="A real HomePlan-generated floor plan shown as a 3D massing view with furniture"
                 className="hero-product-image"
+                // Real CLS gap found 2026-11-04 Core Web Vitals audit: this is the single
+                // largest above-the-fold element on the page (356KB, 2056x1040) with no
+                // width/height anywhere and no CSS aspect-ratio reservation — the browser
+                // had zero intrinsic-size info until the image finished loading, so the
+                // hero card's height collapsed to 0 and then jumped on load (a real layout
+                // shift, not a theoretical one). width/height here let the browser reserve
+                // the correct box immediately even though CSS still renders it at
+                // width:100%/height:auto. fetchPriority="high" additionally tells the
+                // browser this is the LCP candidate so it fetches before lower-priority
+                // assets (fonts, JS bundles) rather than discovering it late.
+                width={2056}
+                height={1040}
+                fetchPriority="high"
               />
               <span className="dim-line dim-line-bottom" aria-hidden="true">
                 <span className="dim-label">{heroExample.footprint.w.toFixed(1)} ft</span>
