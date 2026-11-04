@@ -402,7 +402,21 @@ export default function Home() {
         <section className="hero hero-centered">
           <span className="hero-eyebrow">Open source</span>
           <h1>From a sentence to a buildable floor plan</h1>
-          <p>Real computed rooms, walls, and doors. Free exports, no credit limits, self-hostable.</p>
+          {/* BMF positioning line (branding masterclass, gtm/BRANDING-MASTERCLASS-OWNER-2026-10-13.md
+              step 1: "what do you stand for / who is it for / why should they care") — this page
+              previously described the product (real geometry, free, self-hostable) but never once
+              named an audience. The real, already-evidenced wedge from this product's own history
+              (plans/homeplan.md: "real geometry not a picture" vs Maket.ai, a real waiting architect
+              customer, IFC/BIM export) is computed, measurable geometry for people who actually build
+              from it — not a generic "AI home design" picture generator. Naming that audience and pain
+              point here, in the same words the meta description below now uses (step 6: "say it the
+              same way everywhere"), is the concrete change; the emotion picked (step 3) is confident/
+              credible, matching the architect/builder audience, not a "fun AI toy" tone. */}
+          <p>
+            Real computed rooms, walls, and doors, not an AI-generated picture. Built for architects,
+            builders, and small teams who need plans they can actually measure and build from. Free
+            exports, no credit limits, self-hostable.
+          </p>
 
           <div className="hero-product-card">
             <div className="hero-product-topbar">

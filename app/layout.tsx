@@ -18,8 +18,13 @@ const geistMono = Geist_Mono({
 // this fallback only ever applies to a local/self-host build that never set it.
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://homeplan-arhansubas-projects.vercel.app";
 const TITLE = "HomePlan — open-source AI floor plan generator";
+// Branding masterclass (gtm/BRANDING-MASTERCLASS-OWNER-2026-10-13.md) step 6: "say it the same
+// way everywhere" — this is the exact audience/pain-point line added to the hero subheadline in
+// app/page.tsx 2026-11-04, reused here so the same BMF positioning (real computed geometry for
+// architects/builders/small teams, not an AI-generated picture) shows up in the og:description,
+// twitter:description, and the SoftwareApplication JSON-LD description below, not just the hero.
 const DESCRIPTION =
-  "Describe a home in plain language and get a real, computed floor plan with room-by-room dimensions. Open source, self-hostable.";
+  "Describe a home in plain language and get a real, computed floor plan with room-by-room dimensions, not an AI-generated picture. Built for architects, builders, and small teams. Open source, self-hostable.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),
