@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { track } from "@/lib/track";
 
 /**
  * Real monetization path for the waiting architect customer: before this, HomePlan had zero
@@ -31,6 +32,11 @@ export function PricingCta() {
         setError(data.error ?? "Could not start checkout.");
         return;
       }
+      // Second step of the real paying-customer funnel (see app/page.tsx's
+      // plan_generated): a real Dodo checkout session was created and the
+      // visitor is about to be redirected to pay, fired before the redirect
+      // since nothing on this page runs after it.
+      track("checkout_started", { plan: "pro" });
       window.location.href = data.checkoutUrl;
     } catch {
       setError("Could not reach checkout. Try again.");

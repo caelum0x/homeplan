@@ -19,6 +19,7 @@ import { downloadPlanAsPng } from "@/lib/exportPng";
 import { buildShareUrl, readSharedBundleFromLocation } from "@/lib/sharePlan";
 import { saveTemplate } from "@/lib/templates";
 import { parseDescription } from "@/lib/parseDescription";
+import { track } from "@/lib/track";
 import heroExamplePlanData from "@/lib/data/heroExamplePlan.json";
 
 // Real engine output (3 bed, 2 bath, home office — see plans/homeplan.md for how this
@@ -202,6 +203,10 @@ export default function Home() {
       setResult(data);
       loadSinglePlan(null);
       setStage("variants");
+      // First step of the real paying-customer funnel (see PricingCta.tsx for the
+      // matching checkout_started step): a plan was actually computed and shown,
+      // not just requested.
+      track("plan_generated", { variantCount: data?.options?.length ?? null });
     } catch {
       setError("Could not reach the generator. Try again.");
       setStage("idle");
