@@ -28,7 +28,7 @@ import heroExamplePlanData from "@/lib/data/heroExamplePlan.json";
 // never needs to call the layout engine (whose furniture IDs use Date.now(), which
 // Next's static prerendering of this page correctly disallows at render time) just to
 // render a label.
-const heroExample = heroExamplePlanData as FloorPlan;
+const heroExample = heroExamplePlanData as unknown as FloorPlan;
 
 interface GenerateResponse {
   input: BriefInput;

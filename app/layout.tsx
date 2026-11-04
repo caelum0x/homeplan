@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   // Reddit/Twitter/X/LinkedIn/a launch-site listing renders as a bare blue link with no
   // preview card, which is a real drag on click-through for an OSS tool that depends on
   // outbound distribution for its only real traffic. Reuses the real, already-live
-  // `public/hero-3d.png` product screenshot (2060x1042, ~1.98:1 — close to the
+  // `public/hero-3d.png` product screenshot (2056x1040, ~1.98:1 — close to the
   // recommended 1.91:1 OG aspect ratio) as the preview image, not a placeholder.
   openGraph: {
     title: TITLE,
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "HomePlan",
     type: "website",
-    images: [{ url: "/hero-3d.png", width: 2060, height: 1042, alt: "HomePlan floor plan generator — 3D massing view with cut doors and furniture" }],
+    images: [{ url: "/hero-3d.png", width: 2056, height: 1040, alt: "HomePlan floor plan generator — 3D massing view with cut doors and furniture" }],
   },
   twitter: {
     card: "summary_large_image",
