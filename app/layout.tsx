@@ -52,7 +52,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Railyard Insights (railyard/apps/product-analytics): cookieless page tag plus
+            custom `railyard.track()` events for the real plan-generated -> checkout-started
+            funnel (lib/track.ts, app/page.tsx, components/PricingCta.tsx). Site key is this
+            hosted instance's own self-serve registration (2026-11-04), same pattern
+            bidstage-tenders and oxhanatelier.com ship in their own root layout. */}
+        <script defer src="https://insights.ereboslab.com/s.js" data-site="s_0GKZt4HKNyUP2axPH6crAjmh" />
+      </body>
     </html>
   );
 }
