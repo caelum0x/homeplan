@@ -9,7 +9,7 @@
 import { parseDescription } from "../lib/parseDescription";
 import { generateFloorPlan } from "../lib/layout/generate";
 import { applyChatCommand } from "../lib/layout/chatEdit";
-import { moveRoom, windowsForRoom } from "../lib/layout/edit";
+import { moveRoom, renameRoom, resizeRoom, removeRoom, windowsForRoom } from "../lib/layout/edit";
 import type { Room } from "../lib/layout/types";
 
 let problems = 0;
@@ -167,6 +167,68 @@ function main() {
     // Removing the front door a second time should fail honestly (nothing left to remove).
     const secondRes = applyChatCommand(plan, "remove the front door");
     check("remove front door twice: honest failure the second time, not a silent no-op success", secondRes.ok === false);
+  }
+
+  // --- 8. Regression lock for the door-count-inflation bug found 2026-11-04: recompute()
+  // used to re-derive every door from a full pairwise room-overlap rescan on *every* edit,
+  // which invented doors between rooms that were never meant to connect (e.g. bedroom-to-
+  // bedroom) the instant any unrelated room's geometry changed — an 8-door fixture grew to
+  // 15 doors from a single no-op renameRoom() call alone. Uses a fresh plan (independent of
+  // the door-removal edits above) so the baseline door count is unambiguous. ---
+  {
+    const freshInput = parseDescription("3 bedroom 2 bath, 1800 sqft, open plan kitchen living");
+    const freshPlan = generateFloorPlan(freshInput);
+    const freshDoorCount = freshPlan.doors.length;
+    check("door-count regression fixture has a sane baseline door count", freshDoorCount > 0 && freshDoorCount < 12);
+
+    const anyRoom = freshPlan.rooms[0];
+    const afterNoopRename = renameRoom(freshPlan, anyRoom.id, anyRoom.label, anyRoom.type);
+    check(
+      "door count regression: a no-op renameRoom() (zero geometry change) never changes the door count",
+      afterNoopRename.doors.length === freshDoorCount,
+    );
+
+    const movable = freshPlan.rooms.find((r) => r.label === "Bathroom");
+    if (movable) {
+      const afterTinyMove = moveRoom(freshPlan, movable.id, movable.x + 0.5, movable.y);
+      check(
+        "door count regression: a small unrelated moveRoom() never duplicates/invents doors",
+        afterTinyMove.doors.length === freshDoorCount,
+      );
+      check(
+        "door count regression: every pre-existing door connection survives the unrelated move unchanged",
+        freshPlan.doors.every((d) => afterTinyMove.doors.some((d2) => d2.connects.slice().sort().join("|") === d.connects.slice().sort().join("|"))),
+      );
+    }
+
+    const removable = freshPlan.rooms.find((r) => r.label === "Bedroom 3");
+    if (removable) {
+      const afterRemove = removeRoom(freshPlan, removable.id);
+      check(
+        "door count regression: removing a room drops only doors that referenced it, nothing else",
+        !afterRemove.doors.some((d) => d.connects.includes(removable.id)),
+      );
+      const expectedSurvivors = freshPlan.doors.filter((d) => !d.connects.includes(removable.id)).length;
+      check(
+        "door count regression: removing a room never regenerates/inflates the surviving door count",
+        afterRemove.doors.length === expectedSurvivors,
+      );
+    }
+
+    const resizable = freshPlan.rooms.find((r) => r.label === "Bedroom 2");
+    if (resizable) {
+      // resizeRoom() snaps w/h to the nearest half-foot grid, so the room's *original*
+      // (unsnapped) generator dimensions aren't a true no-op resize — snap once first, then
+      // resize again to that already-snapped size, which genuinely is a no-op and must not
+      // touch the door count either way.
+      const snapped = resizeRoom(freshPlan, resizable.id, resizable.w, resizable.h);
+      const snappedRoom = snapped.rooms.find((r) => r.id === resizable.id)!;
+      const afterTrueNoopResize = resizeRoom(snapped, resizable.id, snappedRoom.w, snappedRoom.h);
+      check(
+        "door count regression: a true no-op resizeRoom() (identical already-snapped w/h) never changes the door count",
+        afterTrueNoopResize.doors.length === snapped.doors.length,
+      );
+    }
   }
 
   console.log(problems === 0 ? "\nAll opening-edit checks passed." : `\n${problems} opening-edit check(s) FAILED.`);
