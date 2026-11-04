@@ -65,26 +65,30 @@ async function main() {
 
   check("LICENSE.txt is vendored alongside the assets", fs.existsSync(path.join(PUBLIC_DIR, "assets", "furniture-cc0", "LICENSE.txt")));
 
-  // The real wiring: FURNITURE_GLB_ASSETS must point sofa at a file that actually exists, and
-  // the scale computed for the catalog's real sofa footprint must be sane (positive, and close
-  // enough to 1x that the real mesh fills roughly the same floor footprint as the parametric
-  // placeholder it replaces, not visibly tiny or room-filling).
-  const sofaUrl = FURNITURE_GLB_ASSETS.sofa;
-  check("FURNITURE_GLB_ASSETS wires sofa to a real asset path", typeof sofaUrl === "string" && sofaUrl.length > 0);
-  if (sofaUrl) {
-    const relPath = sofaUrl.replace(/^\//, "");
-    check("FURNITURE_GLB_ASSETS.sofa points at a file that exists in public/", fs.existsSync(path.join(PUBLIC_DIR, relPath)));
+  // The real wiring: every entry in FURNITURE_GLB_ASSETS must point at a file that actually
+  // exists, and the scale computed for that type's real catalog footprint must be sane
+  // (positive, and close enough to 1x that the real mesh fills roughly the same floor
+  // footprint as the parametric placeholder it replaces, not visibly tiny or room-filling).
+  const wiredTypes = Object.keys(FURNITURE_GLB_ASSETS) as Array<keyof typeof FURNITURE_GLB_ASSETS>;
+  check(
+    "all 5 vendored furniture types are wired to a real mesh (sofa, bed_queen, dining_table, dining_chair, desk)",
+    wiredTypes.length === 5 &&
+      ["sofa", "bed_queen", "dining_table", "dining_chair", "desk"].every((t) => wiredTypes.includes(t as (typeof wiredTypes)[number])),
+  );
+
+  for (const type of wiredTypes) {
+    const url = FURNITURE_GLB_ASSETS[type];
+    check(`FURNITURE_GLB_ASSETS wires ${type} to a real asset path`, typeof url === "string" && url.length > 0);
+    if (url) {
+      const relPath = url.replace(/^\//, "");
+      check(`FURNITURE_GLB_ASSETS.${type} points at a file that exists in public/`, fs.existsSync(path.join(PUBLIC_DIR, relPath)));
+    }
+
+    const catalogEntry = FURNITURE_CATALOG[type];
+    const scale = furnitureModelFitScale(type, catalogEntry);
+    check(`furnitureModelFitScale returns a finite positive scale for the real ${type} catalog entry`, Number.isFinite(scale) && scale > 0);
+    check(`furnitureModelFitScale's scale keeps the swapped-in ${type} mesh within a sane range of the placeholder's footprint (0.3x-3x)`, scale > 0.3 && scale < 3);
   }
-
-  const catalogSofa = FURNITURE_CATALOG.sofa;
-  const scale = furnitureModelFitScale("sofa", catalogSofa);
-  check("furnitureModelFitScale returns a finite positive scale for the real sofa catalog entry", Number.isFinite(scale) && scale > 0);
-  check("furnitureModelFitScale's scale keeps the swapped-in mesh within a sane range of the placeholder's footprint (0.3x-3x)", scale > 0.3 && scale < 3);
-
-  // Every other furniture type must be untouched — this is a proof of concept for one piece,
-  // not a silent catalog-wide change.
-  const wiredTypes = Object.keys(FURNITURE_GLB_ASSETS);
-  check("exactly one furniture type is wired to a real mesh so far (sofa)", wiredTypes.length === 1 && wiredTypes[0] === "sofa");
 
   if (problems === 0) {
     console.log("\nAll furniture .glb checks passed.");

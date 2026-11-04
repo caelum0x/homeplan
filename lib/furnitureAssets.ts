@@ -14,13 +14,20 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { FurnitureType } from "./layout/types";
 
 /**
- * Only `sofa` is wired as the real, working proof of concept this task asked
- * for. bed/table/chair/desk assets are vendored (same directory, same
- * license) and ready — add their keys here to extend the same real-mesh
- * treatment to them in a follow-up pass; nothing else needs to change.
+ * Every vendored CC0 mesh (sofa, bed, table, chair, desk — see
+ * public/assets/furniture-cc0/LICENSE.txt) is wired here, each via the exact
+ * same real-mesh swap-in path in FloorPlan3D.tsx. Mapped to the catalog type
+ * each Kenney source model actually depicts (bedDouble -> bed_queen, the
+ * plain table -> dining_table, the plain chair -> dining_chair, desk ->
+ * desk) — any other FurnitureType with no entry here keeps rendering the
+ * existing parametric geometry, exactly as before.
  */
 export const FURNITURE_GLB_ASSETS: Partial<Record<FurnitureType, string>> = {
   sofa: "/assets/furniture-cc0/sofa.glb",
+  bed_queen: "/assets/furniture-cc0/bed.glb",
+  dining_table: "/assets/furniture-cc0/table.glb",
+  dining_chair: "/assets/furniture-cc0/chair.glb",
+  desk: "/assets/furniture-cc0/desk.glb",
 };
 
 let cachedLoader: GLTFLoader | null = null;
@@ -65,6 +72,14 @@ export function loadFurnitureModel(url: string): Promise<THREE.Object3D> {
 const GLB_NATIVE_FOOTPRINT_FT: Partial<Record<FurnitureType, { w: number; h: number }>> = {
   // Kenney's loungeSofa.glb measured bounding box: 0.98m x 0.41m footprint.
   sofa: { w: 0.98 / 0.3048, h: 0.41 / 0.3048 },
+  // Kenney's bedDouble.glb measured bounding box: 0.956m x 1.125m footprint.
+  bed_queen: { w: 0.956 / 0.3048, h: 1.125 / 0.3048 },
+  // Kenney's table.glb measured bounding box: 0.841m x 0.447m footprint.
+  dining_table: { w: 0.841 / 0.3048, h: 0.447 / 0.3048 },
+  // Kenney's chair.glb measured bounding box: 0.2m x 0.2m footprint.
+  dining_chair: { w: 0.2 / 0.3048, h: 0.2 / 0.3048 },
+  // Kenney's desk.glb measured bounding box: 0.734m x 0.384m footprint.
+  desk: { w: 0.734 / 0.3048, h: 0.384 / 0.3048 },
 };
 
 /** Uniform scale factor to best-fit `item`'s real footprint without distorting the mesh. */

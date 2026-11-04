@@ -24,9 +24,10 @@ geometry/materials unmodified):
   desk.glb   <- Furniture Kit "desk.glb"
 
 Vendored 2026-11-04 as part of HomePlan's furniture-realism pass (see
-plans/homeplan.md and lib/furnitureAssets.ts). Only sofa.glb is wired into the
-live 3D view so far (components/FloorPlan3D.tsx); bed/table/chair/desk are
-vendored and ready for the same treatment in a follow-up pass.
+plans/homeplan.md and lib/furnitureAssets.ts). All 5 meshes are wired into
+the live 3D view (components/FloorPlan3D.tsx): sofa.glb -> sofa, bed.glb ->
+bed_queen, table.glb -> dining_table, chair.glb -> dining_chair, desk.glb ->
+desk.
 
 Other known CC0 sources evaluated for this task (not used here, documented for
 the next person who extends this set):
