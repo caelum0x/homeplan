@@ -147,6 +147,22 @@ export interface FloorPlan {
   windows?: Window[];
   /** Optional override of the default exterior/interior wall color (materials picker). Undefined = the renderer's default. */
   wallColor?: string;
+  /**
+   * Manual opening overrides -- Maket.ai's "canvas-based wall and opening adjustments"
+   * (add/remove/move a door or window independent of the auto-derived geometry). Every
+   * window/door is still *derived* from real room geometry by default (lib/layout/windows.ts,
+   * lib/layout/edit.ts's buildWallsAndDoorsFromGeometry); these three fields are the honest
+   * "a human overrode this specific opening" overlay applied every recompute() so the
+   * override survives a later drag/resize of an unrelated room. See lib/layout/edit.ts's
+   * "manual opening overlay" section for the real read/write rules. All optional so every
+   * pre-existing plan (old share links, localStorage templates, freshly generated plans)
+   * still parses with the exact same behavior as before this existed.
+   */
+  manualWindows?: Window[];
+  /** Keys (`${orientation}:${x}:${y}`, see edit.ts's windowKey) of auto-derived windows a human explicitly removed. */
+  removedWindowKeys?: string[];
+  /** Keys (sorted `connects` pair joined by `|`, see edit.ts's doorKey) of doors a human explicitly removed. */
+  removedDoorKeys?: string[];
 }
 
 /**

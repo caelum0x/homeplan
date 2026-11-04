@@ -20,12 +20,40 @@
 //   "remove the dining table from the dining room"
 //   "move the sofa in the living room left" / "... by 2 ft"
 //   "rotate the bed in bedroom 1" / "rotate the sofa in the living room by 180 degrees"
+//   "add a window to the kitchen"
+//   "remove the window from the primary bedroom" / "remove a window in bedroom 2"
+//   "move the window in the kitchen left" / "... by 2 ft"
+//   "remove the door between the kitchen and the hallway"
+//   "remove the front door"
+//
+// The last five are Maket.ai's "canvas-based wall and opening adjustments" — before this,
+// HomePlan's doors/windows were 100% auto-derived from room geometry with zero manual
+// control (see lib/layout/edit.ts's "manual opening overlay" section for how an add/
+// remove/move survives a later, unrelated room drag instead of being silently recomputed
+// away).
 //
 // Anything that doesn't match a known shape returns a clear error message
 // naming what was understood vs. not — never a silent no-op.
 
 import type { FloorPlan, FurnitureItem, FurnitureType, Room, RoomType } from "./types";
-import { addRoom, addFurniture, moveFurniture, moveRoom, removeFurniture, removeRoom, renameRoom, resizeRoom, rotateFurniture } from "./edit";
+import {
+  addFurniture,
+  addRoom,
+  addWindowToRoom,
+  doorBetween,
+  frontDoorFor,
+  moveFurniture,
+  moveRoom,
+  moveWindow,
+  removeDoor,
+  removeFurniture,
+  removeRoom,
+  removeWindow,
+  renameRoom,
+  resizeRoom,
+  rotateFurniture,
+  windowsForRoom,
+} from "./edit";
 import { FURNITURE_CATALOG } from "./furniture";
 
 export interface ChatEditResult {
@@ -219,6 +247,78 @@ function furnitureCatalogLabels(): string {
 export function applyChatCommand(plan: FloorPlan, rawCommand: string): ChatEditResult {
   const command = normalize(rawCommand);
   if (!command) return { ok: false, message: "Type a command, e.g. “make the primary bedroom bigger”." };
+
+  // ---- door remove: remove the front door  (checked before the generic room-remove match,
+  // which would otherwise look for a room literally named "the front door")
+  const frontDoorRemoveMatch = command.match(/^(?:remove|delete)\s+the\s+front\s+door$/);
+  if (frontDoorRemoveMatch) {
+    const entry = plan.rooms.find((r) => r.type === "entry");
+    const door = entry ? frontDoorFor(plan, entry.id) : null;
+    if (!door) return { ok: false, message: "There's no front door on this plan to remove." };
+    return { ok: true, plan: removeDoor(plan, door.id), message: "Removed the front door." };
+  }
+
+  // ---- door remove: remove the door between (the) <room> and (the) <room>
+  const doorRemoveMatch = command.match(/^(?:remove|delete)\s+the\s+door\s+between\s+(?:the\s+)?(.+?)\s+and\s+(?:the\s+)?(.+)$/);
+  if (doorRemoveMatch) {
+    const [, roomARef, roomBRef] = doorRemoveMatch;
+    const roomA = findRoom(plan, roomARef);
+    const roomB = findRoom(plan, roomBRef);
+    if (!roomA || !roomB) {
+      return {
+        ok: false,
+        message: `Couldn't find both rooms ("${roomARef.trim()}", "${roomBRef.trim()}"). Rooms on this plan: ${describeRooms(plan)}.`,
+      };
+    }
+    const door = doorBetween(plan, roomA.id, roomB.id);
+    if (!door) return { ok: false, message: `There's no door between ${roomA.label} and ${roomB.label}.` };
+    return { ok: true, plan: removeDoor(plan, door.id), message: `Removed the door between ${roomA.label} and ${roomB.label}.` };
+  }
+
+  // ---- window add: add a window to/in (the) <room>  (checked before the generic furniture-add
+  // match below, which doesn't know "window" is an opening, not a catalog item)
+  const windowAddMatch = command.match(/^add\s+a\s+window\s+(?:to|in)\s+(?:the\s+)?(.+)$/);
+  if (windowAddMatch) {
+    const [, roomRef] = windowAddMatch;
+    const room = findRoom(plan, roomRef);
+    if (!room) return { ok: false, message: `Couldn't find a room matching "${roomRef.trim()}". Rooms on this plan: ${describeRooms(plan)}.` };
+    const nextPlan = addWindowToRoom(plan, room.id);
+    if (nextPlan === plan) {
+      return { ok: false, message: `${room.label} has no exterior wall to put a window on.` };
+    }
+    return { ok: true, plan: nextPlan, message: `Added a window to ${room.label}.` };
+  }
+
+  // ---- window remove: remove/delete a/the window from/in (the) <room>
+  const windowRemoveMatch = command.match(/^(?:remove|delete)\s+(?:a|the)\s+window\s+(?:from|in)\s+(?:the\s+)?(.+)$/);
+  if (windowRemoveMatch) {
+    const [, roomRef] = windowRemoveMatch;
+    const room = findRoom(plan, roomRef);
+    if (!room) return { ok: false, message: `Couldn't find a room matching "${roomRef.trim()}". Rooms on this plan: ${describeRooms(plan)}.` };
+    const matches = windowsForRoom(plan, room);
+    if (matches.length === 0) return { ok: false, message: `There's no window in ${room.label} to remove.` };
+    return { ok: true, plan: removeWindow(plan, matches[0].id), message: `Removed the window in ${room.label}.` };
+  }
+
+  // ---- window move: move the window in (the) <room> left/right/up/down/... [by N ft]
+  const windowMoveMatch = command.match(
+    /^move\s+the\s+window\s+in\s+(?:the\s+)?(.+?)\s+(left|right|up|down|forward|back|toward the front|toward the back)\s*(?:by\s+(\d+(?:\.\d+)?)\s*(?:ft|feet)?)?$/,
+  );
+  if (windowMoveMatch) {
+    const [, roomRef, dir, amountStr] = windowMoveMatch;
+    const room = findRoom(plan, roomRef);
+    if (!room) return { ok: false, message: `Couldn't find a room matching "${roomRef.trim()}". Rooms on this plan: ${describeRooms(plan)}.` };
+    const matches = windowsForRoom(plan, room);
+    if (matches.length === 0) return { ok: false, message: `There's no window in ${room.label} to move.` };
+    const target = matches[0];
+    const step = amountStr ? parseFloat(amountStr) : FURNITURE_MOVE_STEP_FT;
+    // A window can only slide along its own wall (that's the whole real-geometry point), so
+    // "up"/"down" on a window whose wall runs left-right just means "decrease/increase" the
+    // same way "left"/"right" would — there's no second axis to move it on.
+    const sign = dir === "left" || dir === "up" || dir === "forward" || dir === "toward the front" ? -1 : 1;
+    const nextPlan = moveWindow(plan, target.id, sign * step);
+    return { ok: true, plan: nextPlan, message: `Moved the window in ${room.label} ${dir} ${step}ft.` };
+  }
 
   // ---- furniture add: add a/an <furniture> to/in (the) <room>  (checked before the
   // generic room-add match below, which would otherwise swallow this as a bad room type)
@@ -443,7 +543,7 @@ export function applyChatCommand(plan: FloorPlan, rawCommand: string): ChatEditR
   return {
     ok: false,
     message:
-      'Didn’t recognize that command. Try: "make the kitchen bigger", "shrink bedroom 2 by 15%", "move the bathroom left", "rename the office to Studio", "add a bedroom", "remove the closet", "add a sofa to the living room", "remove the bed from bedroom 2", "move the sofa in the living room left", or "rotate the bed in bedroom 1".',
+      'Didn’t recognize that command. Try: "make the kitchen bigger", "shrink bedroom 2 by 15%", "move the bathroom left", "rename the office to Studio", "add a bedroom", "remove the closet", "add a sofa to the living room", "remove the bed from bedroom 2", "move the sofa in the living room left", "rotate the bed in bedroom 1", "add a window to the kitchen", "remove the window from bedroom 2", "move the window in the kitchen left", "remove the door between the kitchen and the hallway", or "remove the front door".',
   };
 }
 

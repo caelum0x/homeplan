@@ -23,10 +23,10 @@
 // algorithm backs both the initial generation and every Studio edit, so an L-shaped plan
 // stays L-shaped after a drag/resize/add/remove instead of silently squaring off.
 
-import type { Door, FloorPlan, FurnitureItem, FurnitureType, Room, RoomType, Wall } from "./types";
+import type { Door, FloorPlan, FurnitureItem, FurnitureType, Room, RoomType, Wall, Window } from "./types";
 import { computeExteriorSegments, sharedEdgeOverlap } from "./geometry";
 import { makeFurniture } from "./furniture";
-import { computeWindows } from "./windows";
+import { computeWindows, roomEdges, colinearOverlap } from "./windows";
 import { computeDoorSwings } from "./doorSwings";
 
 const DOOR_WIDTH = 3;
@@ -136,6 +136,149 @@ export function removeFurniture(plan: FloorPlan, furnitureId: string): FloorPlan
   return { ...plan, furniture: plan.furniture.filter((f) => f.id !== furnitureId) };
 }
 
+// ---- Doors/windows: manual opening overlay on top of the auto-derived geometry (Maket.ai's
+// "canvas-based wall and opening adjustments" — add/remove/move a door or window independent
+// of the auto-derivation; see recompute()'s "manual opening overlay" section for the real
+// persistence rule, and windowKey/doorKey above for why these are keyed the way they are). ----
+
+const MANUAL_WINDOW_WIDTH = 3; // feet — same width windows.ts's own auto-derivation uses
+
+/** Windows whose opening sits on `room`'s own boundary — the honest "is this window really on
+ * this room's wall" check, same geometric-overlap test windows.ts itself uses to derive them
+ * in the first place, rather than trusting any stored room association (Window doesn't carry
+ * one — a window's position IS its only identity). */
+export function windowsForRoom(plan: FloorPlan, room: Room): Window[] {
+  return (plan.windows ?? []).filter((win) =>
+    roomEdges(room).some((edge) => {
+      if (edge.orientation !== win.orientation) return false;
+      if (win.orientation === "h") return Math.abs(edge.y1 - win.y) < 0.3 && win.x >= edge.x1 - 0.3 && win.x <= edge.x2 + 0.3;
+      return Math.abs(edge.x1 - win.x) < 0.3 && win.y >= edge.y1 - 0.3 && win.y <= edge.y2 + 0.3;
+    }),
+  );
+}
+
+/** The real door connecting two specific rooms, if a shared-edge opening currently exists between them. */
+export function doorBetween(plan: FloorPlan, roomAId: string, roomBId: string): Door | null {
+  return plan.doors.find((d) => d.connects.includes(roomAId) && d.connects.includes(roomBId)) ?? null;
+}
+
+/** The exterior front door for a room (only ever the entry room — see buildWallsAndDoorsFromGeometry), if one currently exists. */
+export function frontDoorFor(plan: FloorPlan, roomId: string): Door | null {
+  return plan.doors.find((d) => d.connects.includes("exterior") && d.connects.includes(roomId)) ?? null;
+}
+
+/**
+ * Immutable: removes a door (interior or the exterior front door) by id — the architectural
+ * opening is simply gone (a plain wall renders there on the next recompute), not replaced or
+ * blocked. Persisted by doorKey (the pair of things it connects), not the door's own
+ * id/position, since both regenerate from scratch every recompute.
+ */
+export function removeDoor(plan: FloorPlan, doorId: string): FloorPlan {
+  const door = plan.doors.find((d) => d.id === doorId);
+  if (!door) return plan;
+  const key = doorKey(door.connects);
+  const nextKeys = Array.from(new Set([...(plan.removedDoorKeys ?? []), key]));
+  return recompute(plan.rooms, { ...plan, removedDoorKeys: nextKeys });
+}
+
+/**
+ * Immutable: adds a new window to `room`'s longest exterior wall run that isn't already
+ * mostly occupied by an existing window or door — real geometry, not a decorative icon
+ * dropped at a fixed offset. Returns `plan` unchanged (an honest no-op) if the room has no
+ * exterior wall at all (a fully interior room — there is genuinely nowhere to put one).
+ */
+export function addWindowToRoom(plan: FloorPlan, roomId: string): FloorPlan {
+  const room = plan.rooms.find((r) => r.id === roomId);
+  if (!room) return plan;
+  const exteriorWalls = plan.walls.filter((w) => w.exterior);
+  const occupied = [...(plan.windows ?? []), ...plan.doors];
+
+  let best: { x: number; y: number; orientation: "h" | "v" } | null = null;
+  let bestLength = 0;
+  for (const edge of roomEdges(room)) {
+    for (const wall of exteriorWalls) {
+      const overlap = colinearOverlap(edge, wall);
+      if (!overlap) continue;
+      const length = overlap.to - overlap.from;
+      if (length < MANUAL_WINDOW_WIDTH + 1 || length <= bestLength) continue;
+
+      const mid = overlap.from + length / 2;
+      const blocked = occupied.some((o) => {
+        if (o.orientation !== edge.orientation) return false;
+        const alongO = edge.orientation === "h" ? o.x : o.y;
+        const fixedO = edge.orientation === "h" ? o.y : o.x;
+        if (Math.abs(fixedO - overlap.fixed) > 0.5) return false;
+        return Math.abs(alongO - mid) < (o.width + MANUAL_WINDOW_WIDTH) / 2 + 0.5;
+      });
+      const pos = blocked ? overlap.from + length * 0.25 : mid;
+
+      bestLength = length;
+      best = edge.orientation === "h" ? { x: pos, y: overlap.fixed, orientation: "h" } : { x: overlap.fixed, y: pos, orientation: "v" };
+    }
+  }
+  if (!best) return plan;
+  return addManualWindow(plan, { ...best, width: MANUAL_WINDOW_WIDTH });
+}
+
+/** Immutable: layers one explicit window on top of the auto-derived set (see recompute()'s "manual opening overlay"). */
+export function addManualWindow(plan: FloorPlan, win: Omit<Window, "id">): FloorPlan {
+  const id = `manual_window_${Date.now()}_${addCounter++}`;
+  const next: Window = { ...win, id };
+  return recompute(plan.rooms, { ...plan, manualWindows: [...(plan.manualWindows ?? []), next] });
+}
+
+/** Immutable: removes one window (manual or auto-derived) by id. */
+export function removeWindow(plan: FloorPlan, windowId: string): FloorPlan {
+  const win = (plan.windows ?? []).find((w) => w.id === windowId);
+  if (!win) return plan;
+  if (win.id.startsWith("manual_window_")) {
+    return recompute(plan.rooms, { ...plan, manualWindows: (plan.manualWindows ?? []).filter((w) => w.id !== windowId) });
+  }
+  const key = windowKey(win);
+  const nextKeys = Array.from(new Set([...(plan.removedWindowKeys ?? []), key]));
+  return recompute(plan.rooms, { ...plan, removedWindowKeys: nextKeys });
+}
+
+/**
+ * Immutable: shifts one window by `deltaFt` along its own wall (horizontal windows move in x,
+ * vertical windows move in y), clamped to stay within the real exterior wall segment it
+ * started on so a "move the window right" command can never slide it off the end of the
+ * house into open air. Implemented as remove-the-old + add-a-manual-one-at-the-new-position
+ * (same overlay machinery as addManualWindow/removeWindow), not a third storage shape.
+ */
+export function moveWindow(plan: FloorPlan, windowId: string, deltaFt: number): FloorPlan {
+  const win = (plan.windows ?? []).find((w) => w.id === windowId);
+  if (!win) return plan;
+
+  const containingWall = plan.walls.find((w) => {
+    if (!w.exterior) return false;
+    if (win.orientation === "h") {
+      if (Math.abs(w.y1 - w.y2) > 0.1 || Math.abs(w.y1 - win.y) > 0.3) return false;
+      return win.x >= Math.min(w.x1, w.x2) - 0.3 && win.x <= Math.max(w.x1, w.x2) + 0.3;
+    }
+    if (Math.abs(w.x1 - w.x2) > 0.1 || Math.abs(w.x1 - win.x) > 0.3) return false;
+    return win.y >= Math.min(w.y1, w.y2) - 0.3 && win.y <= Math.max(w.y1, w.y2) + 0.3;
+  });
+
+  const half = win.width / 2;
+  let nextX = win.x;
+  let nextY = win.y;
+  if (win.orientation === "h") {
+    nextX = win.x + deltaFt;
+    if (containingWall) nextX = clamp(nextX, Math.min(containingWall.x1, containingWall.x2) + half, Math.max(containingWall.x1, containingWall.x2) - half);
+  } else {
+    nextY = win.y + deltaFt;
+    if (containingWall) nextY = clamp(nextY, Math.min(containingWall.y1, containingWall.y2) + half, Math.max(containingWall.y1, containingWall.y2) - half);
+  }
+
+  const withRemoval = removeWindow(plan, windowId);
+  return addManualWindow(withRemoval, { x: round1(nextX), y: round1(nextY), orientation: win.orientation, width: win.width });
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
 function replaceRoom(rooms: Room[], next: Room): Room[] {
   return rooms.map((r) => (r.id === next.id ? next : r));
 }
@@ -151,12 +294,33 @@ function recompute(rooms: Room[], source: FloorPlan): FloorPlan {
   const footprintW = rooms.length ? Math.max(...rooms.map((r) => r.x + r.w)) : 0;
   const footprintH = rooms.length ? Math.max(...rooms.map((r) => r.y + r.h)) : 0;
 
-  const { walls, doors } = buildWallsAndDoorsFromGeometry(rooms);
+  const { walls, doors: rawDoors } = buildWallsAndDoorsFromGeometry(rooms);
   const overlapWarnings = checkOverlaps(rooms);
+
+  // ---- manual opening overlay (doors) ----
+  // A human-removed door (see removeDoor below) is keyed by which two things it connects,
+  // not its id or position — both of those are regenerated from scratch every recompute,
+  // but "the door between the kitchen and the hallway" is a stable, human-meaningful
+  // identity that survives an unrelated room being dragged elsewhere.
+  const removedDoorKeys = new Set(source.removedDoorKeys ?? []);
+  const doors = rawDoors.filter((d) => !removedDoorKeys.has(doorKey(d.connects)));
+
   // Re-scored from the fresh geometry + furniture every time, same as windows below — a
   // dragged room, a moved sofa, or a newly-added door never leaves a stale hinge/swing choice
   // from before the edit.
   const { doors: doorsWithSwing, warnings: swingWarnings } = computeDoorSwings(rooms, doors, source.furniture);
+
+  // ---- manual opening overlay (windows) ----
+  // Re-derived from the fresh geometry every time, same as walls/doors — a dragged/resized
+  // room's auto windows never go stale on an exterior wall that no longer exists (or gains
+  // one that now does) — then a removed auto window stays removed (keyed by its own
+  // position+orientation, see windowKey) and any manually added window (see addManualWindow)
+  // is layered on top, independent of the auto-derivation.
+  const autoWindows = computeWindows(rooms, walls, doorsWithSwing);
+  const removedWindowKeys = new Set(source.removedWindowKeys ?? []);
+  const surviving = autoWindows.filter((w) => !removedWindowKeys.has(windowKey(w)));
+  const manualWindows = source.manualWindows ?? [];
+  const windows = [...surviving, ...manualWindows];
 
   return {
     footprint: { w: round1(footprintW), h: round1(footprintH) },
@@ -166,12 +330,27 @@ function recompute(rooms: Room[], source: FloorPlan): FloorPlan {
     doors: doorsWithSwing,
     warnings: [...overlapWarnings, ...swingWarnings],
     furniture: source.furniture,
-    // Re-derived from the fresh geometry every time, same as walls/doors — a
-    // dragged/resized room's windows never go stale on an exterior wall that
-    // no longer exists (or gains one that now does).
-    windows: computeWindows(rooms, walls, doorsWithSwing),
+    windows,
     wallColor: source.wallColor,
+    manualWindows: source.manualWindows,
+    removedWindowKeys: source.removedWindowKeys,
+    removedDoorKeys: source.removedDoorKeys,
   };
+}
+
+/** Stable identity for an auto-derived or manual window — position+orientation, since a
+ * window's own `id` is regenerated in array order every recompute() and is never safe to
+ * persist across edits. */
+export function windowKey(w: { x: number; y: number; orientation: "h" | "v" }): string {
+  return `${w.orientation}:${round1(w.x)}:${round1(w.y)}`;
+}
+
+/** Stable identity for a door — the (order-independent) pair of things it connects, since a
+ * door's own `id`/position is regenerated from scratch every recompute() but "the door
+ * between the kitchen and the hallway" (or "the front door", connects = ["exterior", entryId])
+ * is a real, human-meaningful identity that survives an unrelated room being dragged. */
+export function doorKey(connects: [string, string]): string {
+  return [...connects].sort().join("|");
 }
 
 function buildWallsAndDoorsFromGeometry(

@@ -21,7 +21,7 @@ const EPS = 0.05;
 /** Rooms where a window doesn't make sense (no exterior use, or usually windowless by convention). */
 const WINDOW_EXCLUDED_TYPES = new Set<RoomType>(["hallway", "closet", "garage", "courtyard"]);
 
-interface Edge {
+export interface Edge {
   x1: number;
   y1: number;
   x2: number;
@@ -29,7 +29,7 @@ interface Edge {
   orientation: "h" | "v";
 }
 
-function roomEdges(room: Room): Edge[] {
+export function roomEdges(room: Room): Edge[] {
   return [
     { x1: room.x, y1: room.y, x2: room.x + room.w, y2: room.y, orientation: "h" }, // front (facing the street)
     { x1: room.x, y1: room.y + room.h, x2: room.x + room.w, y2: room.y + room.h, orientation: "h" }, // back
@@ -39,7 +39,7 @@ function roomEdges(room: Room): Edge[] {
 }
 
 /** The overlapping run (and the line's fixed coordinate) between a room edge and a wall segment lying on the same line — null if they're not colinear or don't actually overlap. */
-function colinearOverlap(edge: Edge, wall: Wall): { from: number; to: number; fixed: number } | null {
+export function colinearOverlap(edge: Edge, wall: Wall): { from: number; to: number; fixed: number } | null {
   if (edge.orientation === "h") {
     if (Math.abs(wall.y1 - wall.y2) > EPS) return null; // wall isn't horizontal
     if (Math.abs(wall.y1 - edge.y1) > EPS) return null; // not the same line

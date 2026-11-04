@@ -24,6 +24,8 @@ const SUGGESTIONS = [
   "rename the office to Studio",
   "add a sofa to the living room",
   "rotate the bed in bedroom 1",
+  "add a window to the kitchen",
+  "remove the front door",
 ];
 
 /**
