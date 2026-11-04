@@ -4,22 +4,62 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { Door, FloorPlan, FurnitureItem, Room, Wall, Window as PlanWindow } from "@/lib/layout/types";
 import { FURNITURE_CATALOG, type FurnitureSpec } from "@/lib/layout/furniture";
 import { resolveDoorSwingGeometry } from "@/lib/layout/doorSwings";
 import { ROOM_FILL } from "@/lib/renderSvg";
 import { STAIR_RISERS } from "@/lib/layout/stairSpec";
 
-/** Per-category overall height, used by buildFurnitureObject's composite shapes below — real geometric volume per piece, not a photoreal asset. */
-const CATEGORY_HEIGHT: Record<FurnitureSpec["category"], number> = {
-  seating: 1.5,
-  sleeping: 1.6,
-  surface: 1.5,
-  storage: 4,
-  appliance: 3,
-  fixture: 1.8,
-  decor: 0.04,
-};
+/**
+ * Real residential dimensions (inches, converted to feet below), used by
+ * buildFurnitureObject's composite shapes — each piece's proportions match the actual
+ * furniture it represents (a fridge is genuinely taller than a range, a nightstand
+ * genuinely shorter than a wardrobe) instead of one undifferentiated per-category box.
+ */
+const IN = (inches: number) => inches / 12;
+const DIM = {
+  bedFrame: IN(14),
+  mattress: IN(10),
+  headboardAboveMattress: IN(24),
+  pillow: IN(6),
+  sofaSeat: IN(18),
+  sofaBack: IN(20),
+  sofaArm: IN(24),
+  chairSeat: IN(18),
+  chairBack: IN(20),
+  chairLegRadius: IN(1),
+  coffeeTable: IN(18),
+  deskHeight: IN(29),
+  diningTable: IN(30),
+  tableTop: IN(1.5),
+  tableLegInset: IN(2.5),
+  islandCounter: IN(36),
+  islandCounterTop: IN(1.5),
+  fridgeHeight: IN(68),
+  rangeHeight: IN(36),
+  rangeCooktop: IN(1.2),
+  wardrobeHeight: IN(72),
+  dresserHeight: IN(32),
+  nightstandHeight: IN(24),
+  tvStandHeight: IN(20),
+  bookshelfHeight: IN(72),
+  toiletBowl: IN(16),
+  toiletTank: IN(20),
+  bathtubHeight: IN(16),
+  showerCurb: IN(3),
+  showerGlassHeight: IN(66),
+  vanityCounter: IN(32),
+} as const;
+
+/** Clamps the corner radius so `RoundedBoxGeometry` never receives a radius larger than
+ * half the smallest dimension (which would otherwise produce degenerate/self-intersecting
+ * geometry) — every rounded piece below goes through this instead of a bare `new
+ * RoundedBoxGeometry(...)` call. */
+function roundedBox(w: number, h: number, d: number, radius: number, segments = 2): RoundedBoxGeometry {
+  const safeRadius = Math.max(0, Math.min(radius, Math.min(w, h, d) / 2 - 0.001));
+  return new RoundedBoxGeometry(w, h, d, segments, safeRadius);
+}
 
 /**
  * Cheaply checks for real WebGL support with a throwaway canvas before we
@@ -252,7 +292,7 @@ function roomFloorMaterial(room: Room): THREE.Material {
  * gets a top + legs, etc. Still deliberately code-drawn primitives (consistent with this
  * project's existing 2D furniture-icon approach), not an external asset pack.
  */
-function buildFurnitureObject(item: FurnitureItem, spec: FurnitureSpec): THREE.Object3D {
+export function buildFurnitureObject(item: FurnitureItem, spec: FurnitureSpec): THREE.Object3D {
   const group = new THREE.Group();
   const w = item.w;
   const d = item.h;
@@ -272,27 +312,44 @@ function buildFurnitureObject(item: FurnitureItem, spec: FurnitureSpec): THREE.O
 
   switch (spec.category) {
     case "sleeping": {
-      const baseH = 1.1;
-      add(new THREE.BoxGeometry(w, baseH, d), mat(base), 0, baseH / 2, 0);
-      const headH = 2.2;
-      add(new THREE.BoxGeometry(w, headH, 0.3), mat(darker), 0, headH / 2, -d / 2 + 0.15);
-      add(new THREE.BoxGeometry(w * 0.8, 0.3, d * 0.22), mat(lighter), 0, baseH + 0.15, -d / 2 + d * 0.16);
+      const frameH = DIM.bedFrame;
+      add(new THREE.BoxGeometry(w, frameH, d), mat(darker), 0, frameH / 2, 0);
+      const inset = IN(2);
+      add(
+        roundedBox(w - inset * 2, DIM.mattress, d - inset * 2, DIM.mattress * 0.4),
+        mat(base),
+        0,
+        frameH + DIM.mattress / 2,
+        0,
+      );
+      const headboardH = frameH + DIM.mattress + DIM.headboardAboveMattress;
+      add(new THREE.BoxGeometry(w, headboardH, IN(3)), mat(darker), 0, headboardH / 2, -d / 2 + IN(1.5));
+      add(
+        roundedBox(w * 0.38, DIM.pillow, d * 0.22, DIM.pillow * 0.45),
+        mat(lighter),
+        0,
+        frameH + DIM.mattress + DIM.pillow / 2,
+        -d / 2 + d * 0.18,
+      );
       break;
     }
     case "seating": {
       if (label.includes("sofa") || label.includes("armchair")) {
-        const seatH = 1.0;
-        add(new THREE.BoxGeometry(w, seatH, d * 0.7), mat(base), 0, seatH / 2, d * 0.12);
-        const backH = 1.5;
-        add(new THREE.BoxGeometry(w, backH, 0.35), mat(darker), 0, backH / 2, -d / 2 + 0.17);
-        const armW = Math.max(0.35, Math.min(0.55, w * 0.12));
-        const armH = 1.2;
-        add(new THREE.BoxGeometry(armW, armH, d * 0.8), mat(darker), -(w / 2 - armW / 2), armH / 2, 0);
-        add(new THREE.BoxGeometry(armW, armH, d * 0.8), mat(darker), w / 2 - armW / 2, armH / 2, 0);
+        const seatH = DIM.sofaSeat;
+        const seatDepth = d * 0.72;
+        add(roundedBox(w, seatH, seatDepth, seatH * 0.22), mat(base), 0, seatH / 2, d / 2 - seatDepth / 2);
+        const backH = DIM.sofaBack;
+        add(roundedBox(w, backH, IN(7), IN(2.5)), mat(darker), 0, seatH + backH / 2, -d / 2 + IN(3.5));
+        const armW = Math.max(IN(5), Math.min(IN(7), w * 0.12));
+        const armH = DIM.sofaArm;
+        add(roundedBox(armW, armH, d * 0.85, IN(2)), mat(darker), -(w / 2 - armW / 2), armH / 2, 0);
+        add(roundedBox(armW, armH, d * 0.85, IN(2)), mat(darker), w / 2 - armW / 2, armH / 2, 0);
       } else {
-        const seatH = 1.5;
-        add(new THREE.BoxGeometry(w, 0.22, d), mat(base), 0, seatH, 0);
-        const legR = 0.08;
+        // Dining/office chair: real 18" seat height, legs the full height of the seat, a
+        // backrest rising a real 20" above the seat.
+        const seatH = DIM.chairSeat;
+        add(roundedBox(w, IN(2), d, IN(0.6)), mat(base), 0, seatH, 0);
+        const legR = DIM.chairLegRadius;
         for (const [sx, sz] of [
           [-w / 2 + legR * 1.5, -d / 2 + legR * 1.5],
           [w / 2 - legR * 1.5, -d / 2 + legR * 1.5],
@@ -301,61 +358,94 @@ function buildFurnitureObject(item: FurnitureItem, spec: FurnitureSpec): THREE.O
         ]) {
           add(new THREE.CylinderGeometry(legR, legR, seatH, 8), mat(darker, 0.6, 0.2), sx, seatH / 2, sz);
         }
-        const backH = 1.6;
-        add(new THREE.BoxGeometry(w, backH, 0.14), mat(base), 0, seatH + backH / 2, -d / 2 + 0.08);
+        const backH = DIM.chairBack;
+        add(roundedBox(w, backH, IN(1.5), IN(0.5)), mat(base), 0, seatH + backH / 2, -d / 2 + IN(0.9));
       }
       break;
     }
     case "surface": {
-      const legH = 1.5;
-      const topH = 0.2;
-      add(new THREE.BoxGeometry(w, topH, d), mat(base), 0, legH + topH / 2, 0);
-      const legR = 0.1;
+      const topThickness = DIM.tableTop;
+      const legR = IN(1.5);
+      if (label.includes("island")) {
+        // Kitchen island: a solid cabinet base with a thin overhanging counter top, not a
+        // legged table — real residential islands are built-in casework, not furniture legs.
+        const baseH = DIM.islandCounter - DIM.islandCounterTop;
+        add(new THREE.BoxGeometry(w * 0.94, baseH, d * 0.94), mat(darker), 0, baseH / 2, 0);
+        add(roundedBox(w, DIM.islandCounterTop, d, IN(0.3)), mat(lighter, 0.4, 0.1), 0, baseH + DIM.islandCounterTop / 2, 0);
+        break;
+      }
+      const legH = label.includes("coffee")
+        ? DIM.coffeeTable - topThickness
+        : label.includes("desk")
+          ? DIM.deskHeight - topThickness
+          : DIM.diningTable - topThickness; // dining table default
+      add(roundedBox(w, topThickness, d, IN(0.4)), mat(base), 0, legH + topThickness / 2, 0);
+      const legInset = DIM.tableLegInset;
       for (const [sx, sz] of [
-        [-w / 2 + legR * 1.8, -d / 2 + legR * 1.8],
-        [w / 2 - legR * 1.8, -d / 2 + legR * 1.8],
-        [-w / 2 + legR * 1.8, d / 2 - legR * 1.8],
-        [w / 2 - legR * 1.8, d / 2 - legR * 1.8],
+        [-w / 2 + legInset, -d / 2 + legInset],
+        [w / 2 - legInset, -d / 2 + legInset],
+        [-w / 2 + legInset, d / 2 - legInset],
+        [w / 2 - legInset, d / 2 - legInset],
       ]) {
         add(new THREE.CylinderGeometry(legR, legR, legH, 8), mat(darker, 0.6, 0.2), sx, legH / 2, sz);
       }
       break;
     }
     case "appliance": {
-      const h = CATEGORY_HEIGHT.appliance;
-      add(new THREE.BoxGeometry(w, h, d), mat(base, 0.35, 0.6), 0, h / 2, 0);
+      if (label.includes("fridge")) {
+        const h = DIM.fridgeHeight;
+        add(new THREE.BoxGeometry(w, h, d), mat(base, 0.35, 0.6), 0, h / 2, 0);
+        add(new THREE.BoxGeometry(w * 0.03, h * 0.9, d * 0.6), mat(darker, 0.4, 0.3), -w * 0.18, h / 2, d * 0.1);
+      } else {
+        const h = DIM.rangeHeight;
+        add(new THREE.BoxGeometry(w, h, d), mat(base, 0.35, 0.6), 0, h / 2, 0);
+        add(new THREE.BoxGeometry(w * 0.9, DIM.rangeCooktop, d * 0.85), mat(darker, 0.3, 0.7), 0, h + DIM.rangeCooktop / 2, -d * 0.02);
+      }
       break;
     }
     case "fixture": {
       if (label.includes("toilet")) {
-        const bowlH = 1.3;
+        const bowlH = DIM.toiletBowl;
         add(new THREE.CylinderGeometry(w * 0.38, w * 0.3, bowlH, 12), mat(base), 0, bowlH / 2, d * 0.12);
-        const tankH = 1.6;
-        add(new THREE.BoxGeometry(w * 0.85, tankH, d * 0.3), mat(lighter), 0, tankH / 2, -d / 2 + d * 0.15);
+        const tankH = DIM.toiletTank;
+        add(roundedBox(w * 0.85, tankH, d * 0.3, IN(0.5)), mat(lighter), 0, tankH / 2, -d / 2 + d * 0.15);
       } else if (label.includes("bathtub")) {
-        const h = 1.6;
-        add(new THREE.BoxGeometry(w, h, d), mat(base), 0, h / 2, 0);
-        add(new THREE.BoxGeometry(w * 0.82, 0.08, d * 0.82), mat(lighter, 0.25, 0), 0, h - 0.22, 0);
+        const h = DIM.bathtubHeight;
+        add(roundedBox(w, h, d, IN(1.2)), mat(base), 0, h / 2, 0);
+        add(new THREE.BoxGeometry(w * 0.82, IN(1), d * 0.82), mat(lighter, 0.25, 0), 0, h - IN(2), 0);
       } else if (label.includes("shower")) {
-        add(new THREE.BoxGeometry(w, 0.25, d), mat(base), 0, 0.12, 0);
+        add(new THREE.BoxGeometry(w, DIM.showerCurb, d), mat(base), 0, DIM.showerCurb / 2, 0);
         const glassMat = new THREE.MeshStandardMaterial({
           color: 0xcfe6ea,
           transparent: true,
           opacity: 0.25,
           roughness: 0.1,
         });
-        add(new THREE.BoxGeometry(w, 5.5, 0.08), glassMat, 0, 2.75, -d / 2 + 0.04);
+        add(new THREE.BoxGeometry(w, DIM.showerGlassHeight, IN(1)), glassMat, 0, DIM.showerGlassHeight / 2, -d / 2 + IN(0.5));
       } else {
-        const counterH = 1.6;
-        add(new THREE.BoxGeometry(w, counterH, d), mat(base), 0, counterH / 2, 0);
-        add(new THREE.BoxGeometry(w * 0.6, 0.1, d * 0.5), mat(lighter), 0, counterH - 0.08, 0);
+        const counterH = DIM.vanityCounter;
+        add(roundedBox(w, counterH, d, IN(1)), mat(base), 0, counterH / 2, 0);
+        add(roundedBox(w * 0.6, IN(1.2), d * 0.5, IN(0.3)), mat(lighter), 0, counterH - IN(1), 0);
       }
       break;
     }
     case "storage": {
-      const h = CATEGORY_HEIGHT.storage;
-      add(new THREE.BoxGeometry(w, h, d), mat(base), 0, h / 2, 0);
-      add(new THREE.BoxGeometry(w * 0.96, 0.03, 0.02), mat(darker), 0, h * 0.55, d / 2 - 0.01);
+      // Real per-piece heights (a wardrobe is genuinely ~2x a nightstand) instead of one
+      // undifferentiated category height.
+      const h = label.includes("wardrobe")
+        ? DIM.wardrobeHeight
+        : label.includes("bookshelf")
+          ? DIM.bookshelfHeight
+          : label.includes("nightstand")
+            ? DIM.nightstandHeight
+            : label.includes("tv")
+              ? DIM.tvStandHeight
+              : DIM.dresserHeight; // dresser default
+      add(roundedBox(w, h, d, IN(0.5)), mat(base), 0, h / 2, 0);
+      const seams = label.includes("bookshelf") ? 3 : 1;
+      for (let i = 1; i <= seams; i++) {
+        add(new THREE.BoxGeometry(w * 0.96, IN(0.3), IN(0.15)), mat(darker), 0, (h * i) / (seams + 1), d / 2 - IN(0.1));
+      }
       break;
     }
     default: {

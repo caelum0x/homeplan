@@ -40,7 +40,7 @@ type EntryMode = "describe" | "templates" | "upload";
 
 class ProRequiredError extends Error {}
 
-async function downloadExport(payload: { plan: FloorPlan } | { floors: FloorPlan[] }, format: "pdf" | "dxf", filename: string) {
+async function downloadExport(payload: { plan: FloorPlan } | { floors: FloorPlan[] }, format: "pdf" | "dxf" | "ifc", filename: string) {
   const res = await fetch(`/api/export/${format}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -48,7 +48,7 @@ async function downloadExport(payload: { plan: FloorPlan } | { floors: FloorPlan
   });
   if (res.status === 402) {
     const data = await res.json().catch(() => ({}));
-    throw new ProRequiredError(data.message ?? "PDF and DXF export require HomePlan Pro on this hosted site.");
+    throw new ProRequiredError(data.message ?? "PDF, DXF, and IFC export require HomePlan Pro on this hosted site.");
   }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -80,7 +80,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [viewMode, setViewMode] = useState<ViewMode>("plan");
-  const [exporting, setExporting] = useState<"pdf" | "dxf" | "png" | "3d" | null>(null);
+  const [exporting, setExporting] = useState<"pdf" | "dxf" | "ifc" | "png" | "3d" | null>(null);
   const floorPlan3DRef = useRef<FloorPlan3DHandle>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [entryMode, setEntryMode] = useState<EntryMode>("describe");
@@ -217,7 +217,7 @@ export default function Home() {
     setStage("editing");
   }
 
-  async function handleExport(format: "pdf" | "dxf" | "png") {
+  async function handleExport(format: "pdf" | "dxf" | "ifc" | "png") {
     if (!plan) return;
     setExporting(format);
     setError(null);
@@ -632,6 +632,10 @@ export default function Home() {
                 <button type="button" onClick={() => handleExport("dxf")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
                   <DownloadIcon />
                   {exporting === "dxf" ? "Exporting…" : proGated ? "DXF (Pro)" : "DXF"}
+                </button>
+                <button type="button" onClick={() => handleExport("ifc")} disabled={exporting !== null} className="btn btn-secondary btn-sm">
+                  <DownloadIcon />
+                  {exporting === "ifc" ? "Exporting…" : proGated ? "IFC (Pro)" : "IFC"}
                 </button>
               </div>
             </div>
