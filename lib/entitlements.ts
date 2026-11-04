@@ -192,3 +192,42 @@ export async function checkAndRecordClaimAttempt(email: string, ip: string): Pro
   }
   return { limited: false };
 }
+
+/**
+ * Marks a magic-link claim token's nonce as used (app/api/pro/verify). The
+ * token's own signature+expiry (lib/proClaimToken.ts) only proves it was
+ * issued by this server for this email — without this separate check, the
+ * exact same emailed link could be replayed an unlimited number of times
+ * inside its 15-minute window. Self-provisions its own table (CREATE TABLE
+ * IF NOT EXISTS) so a fresh deployment doesn't need a manual migration step
+ * beyond whatever already created pro_subscribers/pro_claim_attempts.
+ *
+ * Fails closed: returns false (treat as already-used/unconsumable) whenever
+ * the database can't be reached, since granting the claim through without
+ * being able to actually record consumption would defeat the point of this
+ * check entirely.
+ */
+export async function consumeProClaimNonce(nonce: string, email: string): Promise<boolean> {
+  const client = sql();
+  if (!client) return false;
+  const normalizedEmail = email.trim().toLowerCase();
+  try {
+    await client`
+      CREATE TABLE IF NOT EXISTS pro_claim_tokens (
+        nonce text PRIMARY KEY,
+        email text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `;
+    const rows = await client`
+      INSERT INTO pro_claim_tokens (nonce, email)
+      VALUES (${nonce}, ${normalizedEmail})
+      ON CONFLICT (nonce) DO NOTHING
+      RETURNING 1
+    `;
+    return rows.length > 0;
+  } catch (error) {
+    console.error("HomePlan entitlements: consumeProClaimNonce failed", error instanceof Error ? error.message : error);
+    return false;
+  }
+}

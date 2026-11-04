@@ -2,9 +2,16 @@
 
 import { useEffect, useState } from "react";
 
-type ClaimState = "checking" | "entitled" | "pending" | "error";
+type ClaimState = "checking" | "sent" | "pending" | "error";
 
-/** Polls /api/pro/claim a few times after checkout — Dodo's webhook can land a few seconds after the browser redirect back here, so one immediate check often shows "pending" even for a real, already-paid subscription. */
+/**
+ * Polls /api/pro/claim a few times after checkout — Dodo's webhook can land
+ * a few seconds after the browser redirect back here, so one immediate check
+ * often shows "not entitled yet" even for a real, already-paid subscription.
+ * Each successful attempt sends a real confirmation email (see
+ * app/api/pro/claim/route.ts), so this stops polling the moment one succeeds
+ * instead of re-sending on every later attempt.
+ */
 function useAutoClaim(email: string | null): { state: ClaimState; message: string | null } {
   const [state, setState] = useState<ClaimState>(email ? "checking" : "error");
   const [message, setMessage] = useState<string | null>(null);
@@ -22,10 +29,11 @@ function useAutoClaim(email: string | null): { state: ClaimState; message: strin
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email }),
         });
-        const body = (await res.json()) as { entitled?: boolean; message?: string; error?: string };
+        const body = (await res.json()) as { sent?: boolean; message?: string; error?: string };
         if (cancelled) return;
-        if (res.ok && body.entitled) {
-          setState("entitled");
+        if (res.ok && body.sent) {
+          setState("sent");
+          setMessage(body.message ?? "Check your email for a confirmation link.");
           return;
         }
         if (attempt >= 5) {
@@ -73,17 +81,15 @@ export default function ProSuccessPage() {
     >
       {state === "checking" && (
         <>
-          <h1 style={{ fontSize: 24, marginBottom: 12 }}>Confirming your Pro access…</h1>
+          <h1 style={{ fontSize: 24, marginBottom: 12 }}>Confirming your payment…</h1>
           <p style={{ color: "#555" }}>This usually takes a few seconds.</p>
         </>
       )}
-      {state === "entitled" && (
+      {state === "sent" && (
         <>
-          <h1 style={{ fontSize: 24, marginBottom: 12 }}>You&apos;re in — Pro is active</h1>
+          <h1 style={{ fontSize: 24, marginBottom: 12 }}>Check your email</h1>
           <p style={{ color: "#555", marginBottom: 8 }}>
-            Your payment went through and Pro access is confirmed automatically for <strong>{email}</strong>. You&apos;re
-            recognized on this browser from now on — if you switch devices, use{" "}
-            <a href="/pro/access">this link</a> to re-confirm with the same email.
+            {message} Open it on this or any device to finish signing in to Pro for <strong>{email}</strong>.
           </p>
         </>
       )}

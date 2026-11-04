@@ -1,5 +1,6 @@
 import { checkAndRecordClaimAttempt, getProSubscriber } from "@/lib/entitlements";
-import { createProSessionToken, PRO_SESSION_COOKIE } from "@/lib/proSession";
+import { createProClaimToken, PRO_CLAIM_TOKEN_TTL_SECONDS } from "@/lib/proClaimToken";
+import { loadScribaseMailEnv, mailIdempotencyKey, proClaimLinkEmail, sendEmail } from "@/lib/scribaseMail";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -10,8 +11,29 @@ function callerIp(request: Request): string {
   return first || request.headers.get("x-real-ip")?.trim() || "unknown";
 }
 
+function absoluteOrigin(request: Request): string {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (envUrl) return envUrl.replace(/\/$/, "");
+  return new URL(request.url).origin;
+}
+
 /**
- * Self-serve Pro access: given an email, checks the real entitlement table (written by the verified Dodo webhook) and — if entitled — issues a signed session cookie. No password, no account; the email itself is the credential — NOT an actual magic link (no email is ever sent to prove the caller owns that address). That's a real, deeper gap this endpoint alone can't close (see plans/homeplan.md); rate-limiting below at least makes mass guessing/enumeration of which emails are paying customers costly instead of free.
+ * Self-serve Pro access, step 1 of 2: given an email, checks the real
+ * entitlement table (written by the verified Dodo webhook) and — if
+ * entitled — emails a real, single-use magic link via Scribase Mail
+ * (lib/scribaseMail.ts) to that exact address. The actual session cookie is
+ * only ever issued by app/api/pro/verify, once that link is opened — so
+ * POSTing a known customer's email here no longer grants anything by
+ * itself; it only triggers a mail send to that address's real inbox.
+ *
+ * Fixes a real account-takeover gap (found live, 2026-11-04): the previous
+ * version of this endpoint minted the actual session cookie right here, from
+ * the typed email alone, with no proof the caller could read that inbox —
+ * anyone who knew (or guessed) a paying customer's email could claim their
+ * Pro session and billing-portal access without ever paying. See
+ * plans/homeplan.md "History" for this date. Rate-limiting below still
+ * applies on top, making mass guessing/enumeration of which emails are
+ * paying customers costly instead of free.
  */
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;
@@ -39,6 +61,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(
       {
         entitled: false,
+        sent: false,
         message:
           "We don't see active Pro access for that email yet. If you just subscribed, payments can take up to a minute to confirm — try again shortly.",
       },
@@ -46,15 +69,42 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const token = createProSessionToken(subscriber.email);
-  if (!token) {
+  const claim = createProClaimToken(subscriber.email);
+  if (!claim) {
     return Response.json({ error: "Pro sessions aren't configured on this deployment yet." }, { status: 503 });
   }
 
-  const response = Response.json({ entitled: true, email: subscriber.email });
-  response.headers.append(
-    "Set-Cookie",
-    `${PRO_SESSION_COOKIE}=${token}; Path=/; Max-Age=${60 * 60 * 24 * 30}; HttpOnly; Secure; SameSite=Lax`,
-  );
-  return response;
+  const mailEnv = loadScribaseMailEnv();
+  if (!mailEnv) {
+    console.error("HomePlan Pro claim: SCRIBASE_MAIL_KEY not configured, cannot send magic link");
+    return Response.json(
+      {
+        error: "mail_not_configured",
+        message: "Email delivery isn't configured on this deployment yet. Email hello@homeplan.dev and we'll confirm access manually.",
+      },
+      { status: 503 },
+    );
+  }
+
+  const link = `${absoluteOrigin(request)}/api/pro/verify?token=${encodeURIComponent(claim.token)}`;
+  const ttlMinutes = PRO_CLAIM_TOKEN_TTL_SECONDS / 60;
+  const mail = proClaimLinkEmail(subscriber.email, link, ttlMinutes);
+  const delivered = await sendEmail(mailEnv, {
+    to: subscriber.email,
+    subject: mail.subject,
+    html: mail.html,
+    text: mail.text,
+    idempotencyKey: await mailIdempotencyKey(claim.nonce),
+    tags: ["pro-claim"],
+  });
+  if (!delivered) {
+    return Response.json({ error: "Could not send the confirmation email right now. Try again in a moment." }, { status: 502 });
+  }
+
+  return Response.json({
+    entitled: true,
+    sent: true,
+    email: subscriber.email,
+    message: `We sent a confirmation link to ${subscriber.email}. Open it to finish signing in — it expires in ${ttlMinutes} minutes.`,
+  });
 }
