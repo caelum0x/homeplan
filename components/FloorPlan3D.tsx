@@ -7,6 +7,7 @@ import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import type { Door, FloorPlan, FurnitureItem, Room, Wall, Window as PlanWindow } from "@/lib/layout/types";
 import { FURNITURE_CATALOG, type FurnitureSpec } from "@/lib/layout/furniture";
+import { FURNITURE_GLB_ASSETS, furnitureModelFitScale, loadFurnitureModel } from "@/lib/furnitureAssets";
 import { resolveDoorSwingGeometry } from "@/lib/layout/doorSwings";
 import { ROOM_FILL } from "@/lib/renderSvg";
 import { STAIR_RISERS } from "@/lib/layout/stairSpec";
@@ -76,6 +77,18 @@ function hasWebGL(): boolean {
   } catch {
     return false;
   }
+}
+
+/** Frees GPU buffers for a removed-from-scene object — used when the real-mesh furniture
+ * swap-in (see FURNITURE_GLB_ASSETS) replaces a parametric placeholder that's otherwise still
+ * referenced nowhere, so its geometry/material would otherwise leak for the rest of the session. */
+function disposeObject3D(root: THREE.Object3D) {
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.geometry.dispose();
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) material.dispose();
+  });
 }
 
 const WALL_HEIGHT = 9; // feet
@@ -548,6 +561,12 @@ export const FloorPlan3D = forwardRef<FloorPlan3DHandle, FloorPlan3DProps>(funct
       return;
     }
 
+    // Guards the async real-mesh furniture swap-in below: the GLB load can resolve after this
+    // effect has already torn down (plan changed, component unmounted) — without this flag a
+    // late resolve would call scene.add()/scene.remove() on a scene nothing renders anymore,
+    // a real (if harmless-looking) leak of the loaded mesh's GPU buffers.
+    let cancelled = false;
+
     const width = container.clientWidth || 800;
     const height = 520;
 
@@ -717,6 +736,44 @@ export const FloorPlan3D = forwardRef<FloorPlan3DHandle, FloorPlan3DProps>(funct
       obj.position.set(item.x + item.w / 2, floorOffset, item.y + item.h / 2);
       obj.rotation.y = (-item.rotation * Math.PI) / 180;
       scene.add(obj);
+
+      // Real-mesh proof of concept: a handful of furniture types (see FURNITURE_GLB_ASSETS)
+      // have a real, CC0-licensed .glb swapped in once it finishes loading, in place of the
+      // parametric placeholder just added above. Non-blocking and additive — the parametric
+      // piece stays on screen (and stays the permanent result for every other furniture type)
+      // until/unless a real mesh actually loads successfully.
+      const glbUrl = FURNITURE_GLB_ASSETS[item.type];
+      if (glbUrl) {
+        const placeholder = obj;
+        const position = placeholder.position.clone();
+        const rotationY = placeholder.rotation.y;
+        loadFurnitureModel(glbUrl)
+          .then((model) => {
+            if (cancelled) return;
+            const scale = furnitureModelFitScale(item.type, item);
+            model.scale.setScalar(scale);
+            // The vendored mesh's own origin sits at its footprint's near corner (min x/z, y=0),
+            // same convention buildFurnitureObject uses before its own position.set() above —
+            // re-center it the same way so the swap lands exactly where the placeholder was.
+            const box = new THREE.Box3().setFromObject(model);
+            const center = box.getCenter(new THREE.Vector3());
+            model.position.set(position.x - center.x, position.y, position.z - center.z);
+            model.rotation.y = rotationY;
+            model.traverse((child) => {
+              if (child instanceof THREE.Mesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+              }
+            });
+            scene.add(model);
+            scene.remove(placeholder);
+            disposeObject3D(placeholder);
+          })
+          .catch(() => {
+            // Real network/parse failures (offline, self-host without the public/ asset, etc.)
+            // keep the already-rendered parametric placeholder — never a blank gap in the room.
+          });
+      }
     }
 
     let frameId = 0;
@@ -737,6 +794,7 @@ export const FloorPlan3D = forwardRef<FloorPlan3DHandle, FloorPlan3DProps>(funct
     window.addEventListener("resize", handleResize);
 
     return () => {
+      cancelled = true;
       cancelAnimationFrame(frameId);
       window.removeEventListener("resize", handleResize);
       controls.dispose();
