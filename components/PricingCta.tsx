@@ -12,7 +12,12 @@ import { track } from "@/lib/track";
  * self-contained component (not folded into page.tsx's existing styles) so the in-flight
  * visual-redesign branch can restyle or relocate it without fighting this file's logic.
  */
-export function PricingCta() {
+interface PricingCtaProps {
+  /** The real lead-quality tier from the most recent /api/generate response (lib/architectFit.ts), carried through from page.tsx's session state. Undefined when no plan has been generated yet, or the gateway call didn't run — the checkout_started event just omits it, same fail-open contract as the API response it came from. */
+  architectFitTier?: "casual_browser" | "curious_homeowner" | "high_intent_architect";
+}
+
+export function PricingCta({ architectFitTier }: PricingCtaProps) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +41,7 @@ export function PricingCta() {
       // plan_generated): a real Dodo checkout session was created and the
       // visitor is about to be redirected to pay, fired before the redirect
       // since nothing on this page runs after it.
-      track("checkout_started", { plan: "pro" });
+      track("checkout_started", { plan: "pro", architectFitTier: architectFitTier ?? null });
       window.location.href = data.checkoutUrl;
     } catch {
       setError("Could not reach checkout. Try again.");

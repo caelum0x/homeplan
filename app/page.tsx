@@ -33,6 +33,8 @@ const heroExample = heroExamplePlanData as unknown as FloorPlan;
 interface GenerateResponse {
   input: BriefInput;
   options: FloorPlanOption[];
+  /** Lead-quality segmentation from lib/architectFit.ts — absent when EVREN_LLM_API_KEY isn't configured or the gateway call failed (fail-open, never blocks a real plan response). */
+  architectFit?: { score: number; tier: "casual_browser" | "curious_homeowner" | "high_intent_architect" };
 }
 
 type ViewMode = "plan" | "studio" | "3d" | "render" | "zoning" | "lot";
@@ -210,8 +212,14 @@ export default function Home() {
       setStage("variants");
       // First step of the real paying-customer funnel (see PricingCta.tsx for the
       // matching checkout_started step): a plan was actually computed and shown,
-      // not just requested.
-      track("plan_generated", { variantCount: data?.options?.length ?? null });
+      // not just requested. architectFit* fields are the real lead-quality
+      // segmentation (lib/architectFit.ts) — undefined when the gateway call
+      // didn't run or failed, same fail-open contract as the API response.
+      track("plan_generated", {
+        variantCount: data?.options?.length ?? null,
+        architectFitTier: data?.architectFit?.tier ?? null,
+        architectFitScore: data?.architectFit?.score ?? null,
+      });
     } catch {
       setError("Could not reach the generator. Try again.");
       setStage("idle");
@@ -797,7 +805,7 @@ export default function Home() {
       </div>
 
       <div id="pricing" className="container">
-        <PricingCta />
+        <PricingCta architectFitTier={result?.architectFit?.tier} />
       </div>
 
       <footer className="site-footer container">
