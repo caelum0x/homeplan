@@ -294,7 +294,19 @@ function recompute(rooms: Room[], source: FloorPlan): FloorPlan {
   const footprintW = rooms.length ? Math.max(...rooms.map((r) => r.x + r.w)) : 0;
   const footprintH = rooms.length ? Math.max(...rooms.map((r) => r.y + r.h)) : 0;
 
-  const { walls, doors: rawDoors } = buildWallsAndDoorsFromGeometry(rooms);
+  // Only the rooms whose geometry actually changed (moved/resized/newly added) by this
+  // specific edit — a room that still has its exact prior x/y/w/h is never re-scanned for
+  // doors, see buildWallsAndDoorsFromGeometry's door section below for why that matters.
+  const sourceById = new Map(source.rooms.map((r) => [r.id, r]));
+  const editedOrNewRoomIds = new Set<string>();
+  for (const r of rooms) {
+    const prev = sourceById.get(r.id);
+    if (!prev || prev.x !== r.x || prev.y !== r.y || prev.w !== r.w || prev.h !== r.h) {
+      editedOrNewRoomIds.add(r.id);
+    }
+  }
+
+  const { walls, doors: rawDoors } = buildWallsAndDoorsFromGeometry(rooms, source.doors, editedOrNewRoomIds);
   const overlapWarnings = checkOverlaps(rooms);
 
   // ---- manual opening overlay (doors) ----
@@ -353,8 +365,28 @@ export function doorKey(connects: [string, string]): string {
   return [...connects].sort().join("|");
 }
 
+/**
+ * Walls are always fully re-derived from the real room rectangles (cheap, stateless,
+ * purely visual — every wall segment is just "two rooms/the exterior touch exactly here",
+ * so there's nothing to preserve or inflate).
+ *
+ * Doors are NOT re-derived the same way. A door has a real, human-meaningful identity (see
+ * doorKey) — "the door between the kitchen and the hallway" — and a full pairwise
+ * room-overlap rescan on every single edit silently invented doors between rooms that were
+ * never supposed to connect (e.g. bedroom-to-bedroom) the instant *any* unrelated room moved,
+ * because any two rooms can end up geometrically touching without that ever being an intended
+ * adjacency. Real bug found 2026-11-04: an 8-door freshly-generated plan grew to 15 doors the
+ * instant Studio/chat-edit touched any single room, even a no-op `renameRoom()` that changes
+ * zero geometry (see plans/homeplan.md same date). Fixed by never re-deriving doors wholesale:
+ * each existing door survives (repositioned onto its pair's current shared edge) as long as
+ * that pair still actually touches, and a brand-new door is only ever added for a pair that
+ * includes a room this specific edit actually moved/resized/added — never for two rooms that
+ * were sitting still and simply happened to already share an edge before this edit.
+ */
 function buildWallsAndDoorsFromGeometry(
   rooms: Room[],
+  previousDoors: Door[],
+  editedOrNewRoomIds: Set<string>,
 ): { walls: Wall[]; doors: Door[] } {
   const walls: Wall[] = [];
   const doors: Door[] = [];
@@ -372,7 +404,7 @@ function buildWallsAndDoorsFromGeometry(
     addWall(seg.x1, seg.y1, seg.x2, seg.y2, true);
   }
 
-  // Interior walls + doors: every pair of rooms that actually share an edge.
+  // Interior walls: every pair of rooms that actually share an edge — stateless, see header.
   for (let i = 0; i < rooms.length; i++) {
     for (let j = i + 1; j < rooms.length; j++) {
       const overlap = sharedEdgeOverlap(rooms[i], rooms[j]);
@@ -383,21 +415,56 @@ function buildWallsAndDoorsFromGeometry(
       } else {
         addWall(overlap.x - overlap.length / 2, overlap.y, overlap.x + overlap.length / 2, overlap.y, false);
       }
-
-      if (overlap.length >= MIN_DOOR_CLEARANCE) {
-        doors.push({
-          id: `door_${doorCounter++}`,
-          x: overlap.x,
-          y: overlap.y,
-          orientation: overlap.orientation,
-          width: Math.min(DOOR_WIDTH, overlap.length * 0.8),
-          connects: [rooms[i].id, rooms[j].id],
-        });
-      }
     }
   }
 
-  // Front door: if an entry room still exists, give it one opening onto the exterior front wall.
+  // Doors, part 1: carry every pre-existing interior door forward (repositioned onto its
+  // pair's current shared edge) as long as that pair still actually touches — a room that
+  // moved away from its door partner honestly loses that door, it's never kept floating.
+  const byId = new Map(rooms.map((r) => [r.id, r]));
+  const preservedDoorKeys = new Set<string>();
+  function addDoor(aId: string, bId: string, overlap: { x: number; y: number; length: number; orientation: "h" | "v" }) {
+    doors.push({
+      id: `door_${doorCounter++}`,
+      x: overlap.x,
+      y: overlap.y,
+      orientation: overlap.orientation,
+      width: Math.min(DOOR_WIDTH, overlap.length * 0.8),
+      connects: [aId, bId],
+    });
+    preservedDoorKeys.add(doorKey([aId, bId]));
+  }
+  for (const prevDoor of previousDoors) {
+    if (prevDoor.connects.includes("exterior")) continue; // front door is re-derived below, always
+    const [aId, bId] = prevDoor.connects;
+    if (preservedDoorKeys.has(doorKey([aId, bId]))) continue; // already carried forward once
+    const ra = byId.get(aId);
+    const rb = byId.get(bId);
+    if (!ra || !rb) continue; // one side of this door was removed from the plan entirely
+    const overlap = sharedEdgeOverlap(ra, rb);
+    if (!overlap || overlap.length < MIN_DOOR_CLEARANCE) continue; // this edit broke the adjacency
+    addDoor(aId, bId, overlap);
+  }
+
+  // Doors, part 2: a brand-new adjacency is only ever a real possibility where *this* edit
+  // actually moved, resized, or added a room — never a blanket rescan of every room pair, see
+  // the function header for why that's exactly what caused the door-count inflation bug.
+  for (const editedId of editedOrNewRoomIds) {
+    const ra = byId.get(editedId);
+    if (!ra) continue;
+    for (const rb of rooms) {
+      if (rb.id === editedId) continue;
+      const key = doorKey([editedId, rb.id]);
+      if (preservedDoorKeys.has(key)) continue;
+      const overlap = sharedEdgeOverlap(ra, rb);
+      if (!overlap || overlap.length < MIN_DOOR_CLEARANCE) continue;
+      addDoor(editedId, rb.id, overlap);
+    }
+  }
+
+  // Front door: if an entry room still exists, give it one opening onto the exterior front
+  // wall — stateless and cheap to re-derive in full every time, same as the walls above (it's
+  // a single, deterministic opening keyed purely on the entry room's own current position).
   const entry = rooms.find((r) => r.type === "entry");
   if (entry && entry.y <= 0.5) {
     doors.push({
