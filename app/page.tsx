@@ -82,6 +82,11 @@ export default function Home() {
   const [stage, setStage] = useState<Stage>("idle");
   const [viewMode, setViewMode] = useState<ViewMode>("plan");
   const [exporting, setExporting] = useState<"pdf" | "dxf" | "ifc" | "png" | "3d" | null>(null);
+  // Orbit = the pre-existing exterior massing camera; walkthrough = the new real first-person
+  // interior camera (components/FloorPlan3D.tsx) — a gap directly named by Maket.ai's own
+  // marketing ("3D rendering and walkthroughs"). Scoped to this page, not FloorPlan3D itself,
+  // so the toggle survives a plan/variant change and resets to "orbit" on a fresh generation.
+  const [camera3DMode, setCamera3DMode] = useState<"orbit" | "walkthrough">("orbit");
   const floorPlan3DRef = useRef<FloorPlan3DHandle>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [entryMode, setEntryMode] = useState<EntryMode>("describe");
@@ -688,17 +693,39 @@ export default function Home() {
               {viewMode === "studio" && <FloorPlanStudio key={`studio-${activeFloor}`} plan={plan} onChange={updatePlan} traceImageUrl={traceImageUrl} />}
               {viewMode === "3d" && (
                 <div>
-                  <FloorPlan3D ref={floorPlan3DRef} plan={plan} />
-                  <button
-                    type="button"
-                    onClick={handleExport3dRender}
-                    disabled={exporting !== null}
-                    className="btn btn-secondary btn-sm"
-                    style={{ marginTop: 10 }}
-                  >
-                    <DownloadIcon />
-                    {exporting === "3d" ? "Exporting…" : "Download 3D render (PNG)"}
-                  </button>
+                  <FloorPlan3D
+                    ref={floorPlan3DRef}
+                    plan={plan}
+                    viewMode3D={camera3DMode}
+                    onExitWalkthrough={() => setCamera3DMode("orbit")}
+                  />
+                  <div className="toolbar" style={{ marginTop: 10 }}>
+                    <div className="segmented">
+                      <button
+                        type="button"
+                        onClick={() => setCamera3DMode("orbit")}
+                        className={`segmented-btn ${camera3DMode === "orbit" ? "active" : ""}`}
+                      >
+                        Orbit view
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCamera3DMode("walkthrough")}
+                        className={`segmented-btn ${camera3DMode === "walkthrough" ? "active" : ""}`}
+                      >
+                        Walk inside
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleExport3dRender}
+                      disabled={exporting !== null}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      <DownloadIcon />
+                      {exporting === "3d" ? "Exporting…" : "Download 3D render (PNG)"}
+                    </button>
+                  </div>
                 </div>
               )}
               {viewMode === "render" && <AiRenderPanel plan={plan} />}

@@ -11,6 +11,13 @@ import { FURNITURE_GLB_ASSETS, furnitureModelFitScale, loadFurnitureModel } from
 import { resolveDoorSwingGeometry } from "@/lib/layout/doorSwings";
 import { ROOM_FILL } from "@/lib/renderSvg";
 import { STAIR_RISERS } from "@/lib/layout/stairSpec";
+import {
+  findWalkthroughStart,
+  resolveWalkMove,
+  WALK_COLLISION_RADIUS_FT,
+  WALK_EYE_HEIGHT_FT,
+  WALK_SPEED_FPS,
+} from "@/lib/layout/walkthrough";
 
 /**
  * Real residential dimensions (inches, converted to feet below), used by
@@ -492,6 +499,18 @@ interface FloorPlan3DProps {
   cameraElevationFactor?: number;
   /** Multiplier on the real 9ft wall height — defaults to 1. */
   wallHeightFactor?: number;
+  /**
+   * "orbit" (default) is the existing exterior massing view (OrbitControls, capped above
+   * roof height). "walkthrough" is a real first-person interior camera at eye height,
+   * drag-to-look + WASD-to-move, with real wall/door collision from lib/layout/walkthrough.ts
+   * — Maket.ai's own marketing explicitly names "3D rendering and walkthroughs" as a feature
+   * distinct from the floor-plan generator itself; this was the gap.
+   */
+  viewMode3D?: "orbit" | "walkthrough";
+  /** Called when the user presses Escape inside the canvas while in walkthrough mode — lets
+   * the host page switch `viewMode3D` back to "orbit" without this component owning that
+   * piece of UI state itself. */
+  onExitWalkthrough?: () => void;
 }
 
 /**
@@ -511,15 +530,21 @@ export interface FloorPlan3DHandle {
 }
 
 export const FloorPlan3D = forwardRef<FloorPlan3DHandle, FloorPlan3DProps>(function FloorPlan3D(
-  { plan, cameraRadiusFactor = 0.8, cameraElevationFactor = 1.75, wallHeightFactor = 1 },
+  { plan, cameraRadiusFactor = 0.8, cameraElevationFactor = 1.75, wallHeightFactor = 1, viewMode3D = "orbit", onExitWalkthrough },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "unsupported">("loading");
+  const [dragging, setDragging] = useState(false);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const dimsRef = useRef<{ width: number; height: number }>({ width: 800, height: 520 });
+  /** Set by the walkthrough-mode effect branch to tear down its own pointer/keyboard listeners
+   * — kept as a ref (not a local effect variable) only because it's assigned deep inside a
+   * conditional block and read from the single `return () => ...` cleanup at the bottom of the
+   * same effect; always reset to a no-op right before every real teardown. */
+  const walkthroughCleanupRef = useRef<() => void>(() => {});
 
   useImperativeHandle(
     ref,
@@ -591,12 +616,32 @@ export const FloorPlan3D = forwardRef<FloorPlan3DHandle, FloorPlan3DProps>(funct
     const centerZ = plan.footprint.h / 2;
     const diag = Math.hypot(plan.footprint.w, plan.footprint.h);
 
+    const isWalkthrough = viewMode3D === "walkthrough";
+
     // Narrower FOV + a higher elevation ratio than a typical walkthrough camera reads closer to a
     // clean 3/4 isometric massing render (flatter perspective distortion) while staying a real
     // perspective camera (no extra orthographic-camera plumbing needed for this honest massing view).
-    const camera = new THREE.PerspectiveCamera(26, width / height, 0.1, 1000);
-    camera.position.set(centerX + diag * cameraRadiusFactor, diag * cameraElevationFactor, centerZ + diag * cameraRadiusFactor);
+    // Walkthrough mode uses a much wider, human-eye-like FOV instead — a 26° lens standing inside
+    // a room would show almost nothing.
+    const camera = new THREE.PerspectiveCamera(isWalkthrough ? 75 : 26, width / height, 0.1, 1000);
     cameraRef.current = camera;
+
+    // Only used in walkthrough mode: real yaw/pitch + pressed-key state, updated by the pointer/
+    // keyboard listeners below and consumed every animation frame. Declared here (not in the
+    // walkthrough `if` block) so both the listeners and animate() can close over the same object.
+    const walkState = { yaw: 0, pitch: 0, keys: new Set<string>() };
+    let controls: OrbitControls | null = null;
+
+    if (isWalkthrough) {
+      const start = findWalkthroughStart(plan);
+      camera.position.set(start.position.x, WALK_EYE_HEIGHT_FT, start.position.y);
+      camera.rotation.order = "YXZ";
+      camera.lookAt(start.lookAt.x, WALK_EYE_HEIGHT_FT, start.lookAt.y);
+      walkState.yaw = camera.rotation.y;
+      walkState.pitch = camera.rotation.x;
+    } else {
+      camera.position.set(centerX + diag * cameraRadiusFactor, diag * cameraElevationFactor, centerZ + diag * cameraRadiusFactor);
+    }
 
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -607,12 +652,84 @@ export const FloorPlan3D = forwardRef<FloorPlan3DHandle, FloorPlan3DProps>(funct
     container.appendChild(renderer.domElement);
     setStatus("ready");
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(centerX, 0, centerZ);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.maxPolarAngle = Math.PI / 2 - 0.02; // don't let the camera dip below the floor
-    controls.update();
+    if (isWalkthrough) {
+      // Real first-person look: drag (mouse or touch, via the unified Pointer Events API) to
+      // rotate, no pointer-lock request — a locked pointer can fail silently in an embedded
+      // iframe/scrollable page and would trap the mouse away from the rest of the Studio UI.
+      const PITCH_LIMIT = 1.3; // radians, ~75° — stops the camera from flipping past vertical
+      const LOOK_SENSITIVITY = 0.0045;
+      const dom = renderer.domElement;
+      dom.style.touchAction = "none";
+      dom.style.cursor = "grab";
+      let dragLastX = 0;
+      let dragLastY = 0;
+      let isDraggingLocal = false;
+
+      const onPointerDown = (e: PointerEvent) => {
+        isDraggingLocal = true;
+        dragLastX = e.clientX;
+        dragLastY = e.clientY;
+        dom.setPointerCapture(e.pointerId);
+        dom.style.cursor = "grabbing";
+        setDragging(true);
+      };
+      const onPointerMove = (e: PointerEvent) => {
+        if (!isDraggingLocal) return;
+        const dx = e.clientX - dragLastX;
+        const dy = e.clientY - dragLastY;
+        dragLastX = e.clientX;
+        dragLastY = e.clientY;
+        walkState.yaw -= dx * LOOK_SENSITIVITY;
+        walkState.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, walkState.pitch - dy * LOOK_SENSITIVITY));
+      };
+      const endDrag = (e: PointerEvent) => {
+        isDraggingLocal = false;
+        dom.style.cursor = "grab";
+        setDragging(false);
+        try {
+          dom.releasePointerCapture(e.pointerId);
+        } catch {
+          // Already released (e.g. pointercancel) — nothing to clean up.
+        }
+      };
+      const onKeyDown = (e: KeyboardEvent) => {
+        const key = e.key.toLowerCase();
+        if (key === "escape") {
+          onExitWalkthrough?.();
+          return;
+        }
+        if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
+          walkState.keys.add(key);
+          e.preventDefault();
+        }
+      };
+      const onKeyUp = (e: KeyboardEvent) => {
+        walkState.keys.delete(e.key.toLowerCase());
+      };
+
+      dom.addEventListener("pointerdown", onPointerDown);
+      dom.addEventListener("pointermove", onPointerMove);
+      dom.addEventListener("pointerup", endDrag);
+      dom.addEventListener("pointercancel", endDrag);
+      window.addEventListener("keydown", onKeyDown);
+      window.addEventListener("keyup", onKeyUp);
+
+      walkthroughCleanupRef.current = () => {
+        dom.removeEventListener("pointerdown", onPointerDown);
+        dom.removeEventListener("pointermove", onPointerMove);
+        dom.removeEventListener("pointerup", endDrag);
+        dom.removeEventListener("pointercancel", endDrag);
+        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keyup", onKeyUp);
+      };
+    } else {
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(centerX, 0, centerZ);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.maxPolarAngle = Math.PI / 2 - 0.02; // don't let the camera dip below the floor
+      controls.update();
+    }
 
     // Soft sky/ground hemisphere fill (warm above, muted below) plus one shadow-casting "sun" —
     // this is what gives walls/floors real shading gradients instead of flat, uniformly-lit color.
@@ -776,9 +893,65 @@ export const FloorPlan3D = forwardRef<FloorPlan3DHandle, FloorPlan3DProps>(funct
       }
     }
 
+    const walkClock = new THREE.Clock();
+
+    /** One real walkthrough step per frame: builds a forward/right vector from the live yaw
+     * (pitch only ever affects where the camera looks, never where it moves — matches every
+     * real first-person navigation convention, you don't speed up by looking at the floor),
+     * combines whichever of WASD/arrow keys are held, then hands the proposed next (x, z) to
+     * lib/layout/walkthrough.ts's real wall/door collision resolver before committing it. */
+    function stepWalkthrough(deltaSeconds: number) {
+      camera.rotation.set(walkState.pitch, walkState.yaw, 0);
+
+      const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), walkState.yaw);
+      const right = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), walkState.yaw);
+      let moveX = 0;
+      let moveZ = 0;
+      const keys = walkState.keys;
+      if (keys.has("w") || keys.has("arrowup")) {
+        moveX += forward.x;
+        moveZ += forward.z;
+      }
+      if (keys.has("s") || keys.has("arrowdown")) {
+        moveX -= forward.x;
+        moveZ -= forward.z;
+      }
+      if (keys.has("d") || keys.has("arrowright")) {
+        moveX += right.x;
+        moveZ += right.z;
+      }
+      if (keys.has("a") || keys.has("arrowleft")) {
+        moveX -= right.x;
+        moveZ -= right.z;
+      }
+      const moveLen = Math.hypot(moveX, moveZ);
+      if (moveLen < 1e-6) return;
+      // Collision below only samples the destination point, not the swept path between frames
+      // (see lib/layout/walkthrough.ts) — fine at normal frame rates, since one frame's move is
+      // always far smaller than the wall-thickness + collision-radius buffer. The one real way
+      // to break that is a huge `deltaSeconds` (tab backgrounded via requestAnimationFrame then
+      // resumed, a stalled JS thread) producing a single multi-foot jump that could tunnel clean
+      // through a wall. Clamping the per-frame delta keeps the largest possible single-frame
+      // step (WALK_SPEED_FPS * MAX_FRAME_DELTA_SECONDS) well under that buffer.
+      const MAX_FRAME_DELTA_SECONDS = 0.1;
+      const distance = WALK_SPEED_FPS * Math.min(deltaSeconds, MAX_FRAME_DELTA_SECONDS);
+      const proposed = {
+        x: camera.position.x + (moveX / moveLen) * distance,
+        y: camera.position.z + (moveZ / moveLen) * distance,
+      };
+      const resolved = resolveWalkMove({ x: camera.position.x, y: camera.position.z }, proposed, plan.walls, plan.doors, WALK_COLLISION_RADIUS_FT);
+      camera.position.x = resolved.x;
+      camera.position.z = resolved.y;
+      camera.position.y = WALK_EYE_HEIGHT_FT;
+    }
+
     let frameId = 0;
     function animate() {
-      controls.update();
+      if (controls) {
+        controls.update();
+      } else {
+        stepWalkthrough(walkClock.getDelta());
+      }
       renderer.render(scene, camera);
       frameId = requestAnimationFrame(animate);
     }
@@ -797,40 +970,78 @@ export const FloorPlan3D = forwardRef<FloorPlan3DHandle, FloorPlan3DProps>(funct
       cancelled = true;
       cancelAnimationFrame(frameId);
       window.removeEventListener("resize", handleResize);
-      controls.dispose();
+      walkthroughCleanupRef.current();
+      walkthroughCleanupRef.current = () => {};
+      controls?.dispose();
       renderer.dispose();
       container.innerHTML = "";
       rendererRef.current = null;
       sceneRef.current = null;
       cameraRef.current = null;
     };
-  }, [plan, cameraRadiusFactor, cameraElevationFactor, wallHeightFactor]);
+  }, [plan, cameraRadiusFactor, cameraElevationFactor, wallHeightFactor, viewMode3D, onExitWalkthrough]);
+
+  const isWalkthroughMode = viewMode3D === "walkthrough";
 
   return (
     <div>
-      <div
-        ref={containerRef}
-        className="card"
-        style={{
-          width: "100%",
-          height: 520,
-          overflow: "hidden",
-          display: status === "unsupported" ? "flex" : "block",
-          alignItems: "center",
-          justifyContent: "center",
-          background: status === "unsupported" ? "var(--color-surface-sunken)" : undefined,
-        }}
-      >
-        {status === "unsupported" && (
-          <p style={{ fontSize: 13, color: "var(--color-ink-soft)", textAlign: "center", maxWidth: 360, padding: 16 }}>
-            3D view needs WebGL, which this browser/environment doesn&apos;t support. The 2D plan and Studio editor
-            above still have the full, real room data — try the 3D view again in a standard desktop browser
-            (Chrome, Firefox, Safari) with hardware acceleration on.
-          </p>
+      <div style={{ position: "relative" }}>
+        <div
+          ref={containerRef}
+          className="card"
+          style={{
+            width: "100%",
+            height: 520,
+            overflow: "hidden",
+            display: status === "unsupported" ? "flex" : "block",
+            alignItems: "center",
+            justifyContent: "center",
+            background: status === "unsupported" ? "var(--color-surface-sunken)" : undefined,
+            cursor: isWalkthroughMode ? (dragging ? "grabbing" : "grab") : undefined,
+          }}
+        >
+          {status === "unsupported" && (
+            <p style={{ fontSize: 13, color: "var(--color-ink-soft)", textAlign: "center", maxWidth: 360, padding: 16 }}>
+              3D view needs WebGL, which this browser/environment doesn&apos;t support. The 2D plan and Studio editor
+              above still have the full, real room data — try the 3D view again in a standard desktop browser
+              (Chrome, Firefox, Safari) with hardware acceleration on.
+            </p>
+          )}
+        </div>
+
+        {/* Real-estate-walkthrough convention (Zillow 3D Home / Apple AR Quick Look): a short,
+            persistent control hint overlaid on the viewport itself, plus one unambiguous exit
+            affordance in the same corner every modal/immersive view in this app already uses —
+            never a hidden gesture the user has to discover on their own. */}
+        {isWalkthroughMode && status === "ready" && (
+          <>
+            <div
+              style={{
+                position: "absolute",
+                top: 12,
+                left: 12,
+                padding: "6px 12px",
+                borderRadius: "var(--radius-full)",
+                background: "rgba(28,25,20,0.72)",
+                color: "#fff",
+                fontSize: 12.5,
+                pointerEvents: "none",
+              }}
+            >
+              Drag to look · W A S D to walk · Esc to exit
+            </div>
+            {onExitWalkthrough && (
+              <button type="button" onClick={onExitWalkthrough} className="btn btn-secondary btn-sm" style={{ position: "absolute", top: 12, right: 12 }}>
+                Exit walkthrough
+              </button>
+            )}
+          </>
         )}
       </div>
       <p style={{ fontSize: 12.5, color: "var(--color-ink-faint)", marginTop: 8 }}>
-        Drag to orbit, scroll to zoom. Massing view built directly from this plan&apos;s real room/wall coordinates — not photorealistic rendering.
+        {isWalkthroughMode
+          ? "Real first-person navigation — eye-level camera, drag to look around, WASD to walk through doorways. Collision is computed from this plan's own real wall/door geometry, the same data the 2D plan and exports use."
+          : "Drag to orbit, scroll to zoom. Massing view built directly from this plan's real room/wall coordinates — not photorealistic rendering."}
       </p>
     </div>
   );
