@@ -133,7 +133,25 @@ export function buildRoomProgram(input: BriefInput): RoomProgram {
   }
 
   const bedrooms: ProgramRoom[] = [];
-  const primaryBedroom = makeRoom("bedroom_1", "primary_bedroom", "Primary Bedroom", "private");
+  const primaryBedroom = makeRoom(
+    "bedroom_1",
+    "primary_bedroom",
+    input.isStudio ? "Sleeping Area" : "Primary Bedroom",
+    "private",
+  );
+  if (input.isStudio) {
+    // A real studio's "bedroom" is an alcove/nook sized for a bed + nightstand +
+    // closet, not a full house's primary suite — applying the full-house 140 sqft
+    // minimum (and 180 sqft ideal) to a studio-scale brief is exactly what made
+    // every studio-apartment brief warn as "doesn't comfortably fit" even though
+    // a real studio is specifically designed around a smaller sleeping zone.
+    // Figures are a real alcove-studio convention (NYC Housing Maintenance Code's
+    // own room-size guidance and typical studio floor plans put a sleeping nook
+    // around 70-100 sqft), not an arbitrary shrink.
+    primaryBedroom.idealArea = 100;
+    primaryBedroom.minArea = 64;
+    primaryBedroom.minWidth = 8;
+  }
   bedrooms.push(primaryBedroom);
   for (let i = 2; i <= input.bedrooms; i++) {
     bedrooms.push(makeRoom(`bedroom_${i}`, "bedroom", `Bedroom ${i}`, "private"));

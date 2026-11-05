@@ -31,6 +31,17 @@ export interface Room {
   w: number;
   h: number;
   areaSqft: number;
+  /**
+   * Overrides the generic per-`RoomType` comfortable-minimum (program.ts's MIN_AREA
+   * table) that `checkMinimums` would otherwise cite. Set whenever a ProgramRoom's own
+   * `minArea` was deliberately changed from that type's house-scale default — currently
+   * only the studio sleeping-nook override (buildRoomProgram). Without this, a studio's
+   * intentionally-smaller "Sleeping Area" (target ~64 sqft) got measured against the
+   * full house "Primary Bedroom" minimum (140 sqft) the warning text itself quoted,
+   * which was simply the wrong number for what this room was actually trying to be —
+   * found live, 2026-11-05, generating a real studio-apartment brief end to end.
+   */
+  minAreaOverride?: number;
   /** Optional override of the default per-type fill color (materials picker) — a hex string, e.g. "#e8d9c4" for oak floor. Undefined = use the default ROOM_FILL for this room's type. */
   floorColor?: string;
   /**
@@ -214,4 +225,16 @@ export interface BriefInput {
    * for every existing brief/caller).
    */
   styleTopologyPreferences?: PrivateTopology[];
+  /**
+   * A real studio apartment: one open sleeping/living/kitchen/dining room by
+   * definition, not a small house. Undefined/false = every existing brief's
+   * behavior, completely unchanged. When true, buildRoomProgram (lib/layout/program.ts)
+   * shrinks the primary bedroom to a real alcove-studio sleeping-nook size (no
+   * separate full bedroom) instead of applying a full house's 140 sqft minimum —
+   * found live, 2026-11-05, generating a real "studio apartment 450 sqft" brief
+   * through the live site: every variant warned the bedroom/bathrooms "don't
+   * comfortably fit" because the room program never actually treated studios any
+   * differently from a 1-bedroom house below this flag's addition.
+   */
+  isStudio?: boolean;
 }

@@ -30,7 +30,14 @@ export function parseDescription(raw: string): BriefInput {
       /(\d+(?:\.\d+)?)\s*[- ]?\s*bath(?:room)?s?/,
       /(\d+(?:\.\d+)?)\s*ba\b/,
     ],
-    2,
+    // A real studio apartment is one bathroom by convention (the 2-bath default
+    // below is sized for a real multi-bedroom house program). Found live, 2026-11-05,
+    // generating a real "studio apartment 450 sqft" brief through the live site as
+    // part of Maket.ai-parity quality verification: isStudio was already detected
+    // above but only ever adjusted the bedroom default — bathrooms silently
+    // kept the 2-bath house default, which alone was enough to make every one of
+    // the 3 generated variants warn that the bathrooms/bedroom didn't fit.
+    isStudio ? 1 : 2,
   );
 
   const sqft = firstNumber(
@@ -42,7 +49,14 @@ export function parseDescription(raw: string): BriefInput {
     1400,
   );
 
-  const openPlan = /open[- ]?(plan|concept)|open\s+kitchen|great\s?room/.test(
+  // A real studio apartment's living/kitchen/dining are one open room by definition
+  // (there is no separate dining room to combine or omit) — forcing openPlan here
+  // is what actually makes buildRoomProgram() (lib/layout/program.ts) emit one
+  // great_room instead of 3 separate public rooms crammed into studio-scale sqft.
+  // Same live-verification pass as the bathroom default above: without this, every
+  // "studio apartment" brief generated a living + kitchen + separate dining room,
+  // each scaled below its own comfortable minimum, with warnings on all 3 variants.
+  const openPlan = isStudio || /open[- ]?(plan|concept)|open\s+kitchen|great\s?room/.test(
     text,
   );
   const hasGarage = /garage|carport/.test(text);
@@ -59,6 +73,7 @@ export function parseDescription(raw: string): BriefInput {
     ...(stories ? { stories } : {}),
     ...(lShaped ? { lShaped } : {}),
     ...(styleTopologyPreferences ? { styleTopologyPreferences } : {}),
+    ...(isStudio ? { isStudio } : {}),
     bedrooms: clamp(Math.round(bedrooms), 1, 8),
     bathrooms: clamp(roundHalf(bathrooms), 1, 6),
     sqft: clamp(Math.round(sqft), 400, 12000),

@@ -427,7 +427,17 @@ export function minSaneDepthForRow(row: ProgramRoom[], width: number): number {
 }
 
 export function toRoom(p: ProgramRoom, rect: Rect): Room {
-  return { id: p.id, type: p.type, label: p.label, x: rect.x, y: rect.y, w: rect.w, h: rect.h, areaSqft: round1(rect.w * rect.h) };
+  return {
+    id: p.id,
+    type: p.type,
+    label: p.label,
+    x: rect.x,
+    y: rect.y,
+    w: rect.w,
+    h: rect.h,
+    areaSqft: round1(rect.w * rect.h),
+    ...(p.minArea !== getMinArea(p.type) ? { minAreaOverride: p.minArea } : {}),
+  };
 }
 
 export interface PrivateZoneResult {
@@ -1129,7 +1139,7 @@ export function checkGarageAccess(rooms: Room[], doors: Door[], warnings: string
 export function checkMinimums(rooms: Room[], warnings: string[]) {
   for (const room of rooms) {
     if (room.type === "hallway" || room.type === "courtyard") continue;
-    const min = getMinArea(room.type);
+    const min = room.minAreaOverride ?? getMinArea(room.type);
     if (min > 0 && room.areaSqft < min * 0.9) {
       warnings.push(
         `${room.label} is ${round1(room.areaSqft)} sqft, below the comfortable minimum of ${min} sqft for this room type.`,
