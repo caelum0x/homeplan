@@ -1,30 +1,37 @@
 import type { BriefInput } from "./layout/types";
+import {
+  EVREN_SYSTEMONE_MODEL,
+  DEFAULT_SYSTEMONE_TIMEOUT_MS,
+  callSystemOne,
+  parseScoreAnswer,
+  parseChoiceAnswer,
+  type GatewayDeps,
+  type GatewayLog,
+  type SystemOneQuestions,
+} from "./evrenDecisionCore";
 
 // Typed AI judgment of how likely a real /api/generate visitor is a serious
 // prospect worth the owner's existing manual "email hello@homeplan.dev"
 // outreach (the only thing that has ever produced a real HomePlan Pro lead
 // so far — found and prioritized entirely by hand). Calls Evren's decision
-// gateway (POST /v1/systemone, model "laya") -- same wire contract and module
-// shape as done/big-projects/bidstage-tenders' match/evren-fit.ts and
-// sahibinden's packages/db/src/repository/evren-risk.ts (read both first): a
-// pure request/response module with no env or fetch globals baked in, so the
+// gateway (POST /v1/systemone, model "laya") through the shared
+// lib/evrenDecisionCore.ts wrapper (vendored from
+// ai-knowledges/evren/decision-core, which this repo's own hand-rolled
+// fetch+parse boilerplate here was one of the 5 real consumers it was
+// factored out of, 2026-11-05) -- same wire contract and module shape as
+// done/big-projects/bidstage-tenders' match/evren-fit.ts and sahibinden's
+// packages/db/src/repository/evren-risk.ts (read both first): a pure
+// request/response module with no env or fetch globals baked in, so the
 // only caller (app/api/generate/route.ts) injects both. Every visitor today
 // is anonymous and untriaged in Railyard Insights -- this gives the funnel
 // dashboard a real, queryable segmentation instead of none at all.
 
-export const ARCHITECT_FIT_MODEL = "laya";
-export const DEFAULT_ARCHITECT_FIT_TIMEOUT_MS = 8_000;
+export const ARCHITECT_FIT_MODEL = EVREN_SYSTEMONE_MODEL;
+export const DEFAULT_ARCHITECT_FIT_TIMEOUT_MS = DEFAULT_SYSTEMONE_TIMEOUT_MS;
 
-export type ArchitectFitLog = (event: string, detail?: Record<string, unknown>) => void;
+export type ArchitectFitLog = GatewayLog;
 
-export type ArchitectFitDeps = {
-  /** Origin of the Evren LLM gateway, e.g. https://evren-llmapi.ssyz.org.tr */
-  readonly baseUrl: string;
-  readonly apiKey: string;
-  readonly fetch: typeof fetch;
-  readonly log: ArchitectFitLog;
-  readonly timeoutMs?: number;
-};
+export type ArchitectFitDeps = GatewayDeps;
 
 /**
  * Fixed, reviewable reason labels. The model only ever picks one of these keys
@@ -143,13 +150,9 @@ function clampScoreToTier(score: number, tier: ArchitectFitTier): number {
 
 /** Pure parse of a /v1/systemone response body; exported so callers never need a live network call to test it. */
 export function parseArchitectFit(body: DecisionBody): ArchitectFitResult | null {
-  const answers = body.answers ?? {};
-  const intentRaw = answers.intent?.score;
-  const reasonRaw = answers.reason?.choice;
-  if (typeof intentRaw !== "number" || !Number.isFinite(intentRaw)) return null;
-  const reasonCode = typeof reasonRaw === "string" && (REASON_CODES as readonly string[]).includes(reasonRaw) ? (reasonRaw as ArchitectFitReasonCode) : null;
-  if (!reasonCode) return null;
-  const score = clamp01(intentRaw / (INTENT_LEVELS.length - 1));
+  const score = parseScoreAnswer(body, "intent", INTENT_LEVELS.length);
+  const reasonCode = parseChoiceAnswer(body, "reason", REASON_CODES);
+  if (score === null || reasonCode === null) return null;
   return { score, tier: tierFromScore(score), reasonCode, reason: ARCHITECT_FIT_REASON_LABELS[reasonCode] };
 }
 
@@ -159,31 +162,16 @@ export function parseArchitectFit(body: DecisionBody): ArchitectFitResult | null
  * response is the sole authoritative path; this call can only add a lead-
  * quality tier on top of it, so a gateway outage or bad response can never
  * delay or break the actual floor-plan generation it is attached to.
+ * HTTP/timeout/fail-open mechanics now live in lib/evrenDecisionCore.ts's
+ * callSystemOne; this function only builds the request shape and parses the
+ * response the same way it always has.
  */
 export async function scoreArchitectFit(deps: ArchitectFitDeps, input: ArchitectFitInput): Promise<ArchitectFitResult | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? DEFAULT_ARCHITECT_FIT_TIMEOUT_MS);
-  try {
-    const res = await deps.fetch(`${deps.baseUrl}/v1/systemone`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${deps.apiKey}` },
-      body: JSON.stringify({ model: ARCHITECT_FIT_MODEL, state: state(input), questions: QUESTIONS }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      deps.log("architect_fit.http_error", { status: res.status });
-      return null;
-    }
-    const body = (await res.json()) as DecisionBody;
-    const result = parseArchitectFit(body);
-    if (!result) deps.log("architect_fit.unparseable_response", {});
-    return result;
-  } catch (error) {
-    deps.log("architect_fit.failed", { error: error instanceof Error ? error.message : String(error) });
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const body = await callSystemOne(deps, state(input), QUESTIONS as unknown as SystemOneQuestions);
+  if (!body) return null;
+  const result = parseArchitectFit(body as DecisionBody);
+  if (!result) deps.log("architect_fit.unparseable_response", {});
+  return result;
 }
 
 export type ArchitectFitEvidence = {
