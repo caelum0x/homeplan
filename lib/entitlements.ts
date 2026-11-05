@@ -80,33 +80,67 @@ export async function upsertProSubscriber(
   const normalizedEmail = email.trim().toLowerCase();
   const normalizedStatus = status.trim().toLowerCase();
   const eventAtIso = eventAt ? eventAt.toISOString() : null;
-  await client`
-    INSERT INTO pro_subscribers (email, dodo_subscription_id, status, dodo_customer_id, event_at, updated_at)
-    VALUES (${normalizedEmail}, ${subscriptionId}, ${normalizedStatus}, ${customerId}, ${eventAtIso}, now())
-    ON CONFLICT (email) DO UPDATE
-      SET dodo_subscription_id = excluded.dodo_subscription_id,
-          status = excluded.status,
-          dodo_customer_id = COALESCE(excluded.dodo_customer_id, pro_subscribers.dodo_customer_id),
-          event_at = COALESCE(excluded.event_at, pro_subscribers.event_at),
-          updated_at = now()
-      WHERE (
-              pro_subscribers.dodo_subscription_id = excluded.dodo_subscription_id
-              OR pro_subscribers.status NOT IN ('active', 'past_due') -- keep in sync with ENTITLED_STATUSES above
-            )
-        AND (
-              excluded.event_at IS NULL
-              OR pro_subscribers.event_at IS NULL
-              OR excluded.event_at >= pro_subscribers.event_at
-            )
-  `;
+  try {
+    // Self-provisions its own table (same pattern as pro_claim_attempts/pro_claim_tokens
+    // below) — previously assumed a one-off manual migration had already created this,
+    // which the same 2026-11-05 live production check that found pro_claim_attempts
+    // missing could not actually confirm either. This is the single most
+    // revenue-critical write in the whole app (the real Dodo webhook -> real paying
+    // customer's entitlement): if this table were ever missing, every subscription
+    // webhook would throw here uncaught, Dodo would retry and eventually give up, and
+    // a real paying customer would never become entitled with no owner-visible error
+    // beyond a Vercel function log. IF NOT EXISTS makes this a no-op once the table is
+    // confirmed to already exist with the right shape.
+    await client`
+      CREATE TABLE IF NOT EXISTS pro_subscribers (
+        email text PRIMARY KEY,
+        dodo_subscription_id text,
+        status text NOT NULL,
+        dodo_customer_id text,
+        event_at timestamptz,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `;
+    await client`
+      INSERT INTO pro_subscribers (email, dodo_subscription_id, status, dodo_customer_id, event_at, updated_at)
+      VALUES (${normalizedEmail}, ${subscriptionId}, ${normalizedStatus}, ${customerId}, ${eventAtIso}, now())
+      ON CONFLICT (email) DO UPDATE
+        SET dodo_subscription_id = excluded.dodo_subscription_id,
+            status = excluded.status,
+            dodo_customer_id = COALESCE(excluded.dodo_customer_id, pro_subscribers.dodo_customer_id),
+            event_at = COALESCE(excluded.event_at, pro_subscribers.event_at),
+            updated_at = now()
+        WHERE (
+                pro_subscribers.dodo_subscription_id = excluded.dodo_subscription_id
+                OR pro_subscribers.status NOT IN ('active', 'past_due') -- keep in sync with ENTITLED_STATUSES above
+              )
+          AND (
+                excluded.event_at IS NULL
+                OR pro_subscribers.event_at IS NULL
+                OR excluded.event_at >= pro_subscribers.event_at
+              )
+    `;
+  } catch (error) {
+    // Logged, not swallowed silently or re-thrown — a thrown error here would 500 the
+    // webhook response, and Dodo would keep retrying the same event for up to ~34h
+    // (masking the real problem as "flaky webhook" instead of a clear log line), while
+    // every *other* unrelated webhook delivered in the meantime fails the exact same way.
+    console.error("HomePlan entitlements: upsertProSubscriber failed", error instanceof Error ? error.message : error);
+  }
 }
 
-/** Self-serve read, called from app/api/pro/claim, app/api/pro/me, and app/api/pro/portal. Fails closed (not entitled) if the DB isn't reachable. */
+/** Self-serve read, called from app/api/pro/claim, app/api/pro/me, and app/api/pro/portal. Fails closed (not entitled) if the DB isn't reachable or the query itself errors. */
 export async function getProSubscriber(email: string): Promise<ProSubscriberStatus | null> {
   const client = sql();
   if (!client) return null;
   const normalizedEmail = email.trim().toLowerCase();
-  const rows = await client`SELECT email, status, dodo_customer_id FROM pro_subscribers WHERE email = ${normalizedEmail} LIMIT 1`;
+  let rows: readonly unknown[];
+  try {
+    rows = await client`SELECT email, status, dodo_customer_id FROM pro_subscribers WHERE email = ${normalizedEmail} LIMIT 1`;
+  } catch (error) {
+    console.error("HomePlan entitlements: getProSubscriber failed, failing closed (not entitled)", error instanceof Error ? error.message : error);
+    return null;
+  }
   const row = rows[0] as { email: string; status: string; dodo_customer_id: string | null } | undefined;
   if (!row) return null;
   return {
@@ -174,23 +208,50 @@ export async function checkAndRecordClaimAttempt(email: string, ip: string): Pro
   const normalizedEmail = email.trim().toLowerCase();
   const windowStart = new Date(Date.now() - CLAIM_WINDOW_SECONDS * 1000).toISOString();
 
-  const results = await client.transaction([
-    client`SELECT pg_advisory_xact_lock(hashtext('homeplan_claim_ip:' || ${ip}))`,
-    client`SELECT pg_advisory_xact_lock(hashtext('homeplan_claim_email:' || ${normalizedEmail}))`,
-    client`
-      INSERT INTO pro_claim_attempts (email, ip)
-      SELECT ${normalizedEmail}, ${ip}
-      WHERE (SELECT count(*)::int FROM pro_claim_attempts WHERE email = ${normalizedEmail} AND created_at > ${windowStart}) < ${CLAIM_MAX_PER_EMAIL}
-        AND (SELECT count(*)::int FROM pro_claim_attempts WHERE ip = ${ip} AND created_at > ${windowStart}) < ${CLAIM_MAX_PER_IP}
-      RETURNING 1
-    `,
-  ]);
-  const inserted = (results[2] as unknown[]).length > 0;
+  try {
+    // Self-provisions its own table, same pattern as consumeProClaimNonce's
+    // pro_claim_tokens below — this function previously assumed pro_claim_attempts
+    // already existed from a one-off manual migration that, verified live against
+    // real production 2026-11-05, never actually happened: every real call crashed
+    // with an uncaught "relation does not exist" error, taking down /api/pro/claim
+    // with a bare 500 for every caller (not just unentitled ones), including the one
+    // real waiting paying customer's own self-serve claim attempt. Fixed at the root.
+    await client`
+      CREATE TABLE IF NOT EXISTS pro_claim_attempts (
+        id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        email text NOT NULL,
+        ip text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `;
+    await client`CREATE INDEX IF NOT EXISTS pro_claim_attempts_email_idx ON pro_claim_attempts (email, created_at)`;
+    await client`CREATE INDEX IF NOT EXISTS pro_claim_attempts_ip_idx ON pro_claim_attempts (ip, created_at)`;
 
-  if (!inserted) {
-    return { limited: true, retryAfterSeconds: CLAIM_WINDOW_SECONDS };
+    const results = await client.transaction([
+      client`SELECT pg_advisory_xact_lock(hashtext('homeplan_claim_ip:' || ${ip}))`,
+      client`SELECT pg_advisory_xact_lock(hashtext('homeplan_claim_email:' || ${normalizedEmail}))`,
+      client`
+        INSERT INTO pro_claim_attempts (email, ip)
+        SELECT ${normalizedEmail}, ${ip}
+        WHERE (SELECT count(*)::int FROM pro_claim_attempts WHERE email = ${normalizedEmail} AND created_at > ${windowStart}) < ${CLAIM_MAX_PER_EMAIL}
+          AND (SELECT count(*)::int FROM pro_claim_attempts WHERE ip = ${ip} AND created_at > ${windowStart}) < ${CLAIM_MAX_PER_IP}
+        RETURNING 1
+      `,
+    ]);
+    const inserted = (results[2] as unknown[]).length > 0;
+
+    if (!inserted) {
+      return { limited: true, retryAfterSeconds: CLAIM_WINDOW_SECONDS };
+    }
+    return { limited: false };
+  } catch (error) {
+    // Fail open, same as the client === null branch above — a rate-limiter outage
+    // must never be the thing that locks a real paying customer out of their own
+    // Pro access. getProSubscriber's own fail-closed-on-DB-unreachable behavior is
+    // the real security backstop if Postgres is genuinely down.
+    console.error("HomePlan entitlements: checkAndRecordClaimAttempt failed, failing open", error instanceof Error ? error.message : error);
+    return { limited: false };
   }
-  return { limited: false };
 }
 
 /**

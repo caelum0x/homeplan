@@ -75,11 +75,36 @@ export function VariantPicker({ options, onSelect }: VariantPickerProps) {
                     <span>{option.plan.totalAreaSqft} sqft</span>
                   </>
                 )}
-                {(() => {
-                  const count = (option.floors ?? [option.plan]).reduce((n, f) => n + f.warnings.length, 0);
-                  return count > 0 ? <span style={{ color: "var(--color-warning-text)" }}>{count} warning(s)</span> : null;
-                })()}
               </div>
+              {(() => {
+                // Surface the real reason, not a bare count — a user picking between
+                // three thumbnails has no other way to know one layout is structurally
+                // compromised (sliver bedroom, blocked door) before opening it in the
+                // Studio. Hiding this behind "2 warning(s)" is the exact kind of silent
+                // defect that makes a generator feel untrustworthy.
+                const allWarnings = (option.floors ?? [option.plan]).flatMap((f) => f.warnings);
+                if (allWarnings.length === 0) return null;
+                return (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: "8px 10px",
+                      background: "var(--color-warning-bg)",
+                      border: "1px solid var(--color-warning-border)",
+                      borderRadius: 8,
+                      color: "var(--color-warning-text)",
+                      fontSize: 12,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    <strong style={{ display: "block", marginBottom: 2 }}>
+                      Needs adjustment ({allWarnings.length} issue{allWarnings.length > 1 ? "s" : ""})
+                    </strong>
+                    {allWarnings[0]}
+                    {allWarnings.length > 1 ? ` (+${allWarnings.length - 1} more — open to see all)` : ""}
+                  </div>
+                );
+              })()}
             </div>
           </button>
         ))}
