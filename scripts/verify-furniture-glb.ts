@@ -40,6 +40,23 @@ function parseGlb(absPath: string): Promise<THREE.Object3D> {
   });
 }
 
+// scripts/sand3d/*.py-generated meshes (second furniture-realism pass, 2026-11-06):
+// each is a real multi-part model (cabinet + seams + pulls, case + shelves, body +
+// burners + knobs, etc. — see each .py file and public/assets/furniture-sand3d/
+// LICENSE.txt for provenance), so beyond ">=1 mesh" each gets its own real minimum
+// part count asserted below — proof it is not one undifferentiated box like the
+// placeholder it replaces.
+const SAND3D_MIN_MESH_COUNT: Record<string, number> = {
+  "wardrobe.glb": 6,
+  "dresser.glb": 8,
+  "nightstand.glb": 8,
+  "tv_stand.glb": 9,
+  "bookshelf.glb": 4,
+  "fridge.glb": 6,
+  "stove.glb": 11,
+  "kitchen_island.glb": 7,
+};
+
 async function main() {
   // Every vendored asset (not just the one currently wired) must be a real, parseable glTF —
   // these are "vendored and ready for a follow-up pass," so they should already be real files.
@@ -65,15 +82,59 @@ async function main() {
 
   check("LICENSE.txt is vendored alongside the assets", fs.existsSync(path.join(PUBLIC_DIR, "assets", "furniture-cc0", "LICENSE.txt")));
 
+  // Every originally-generated sand3d asset (scripts/sand3d/*.py) must also be a real,
+  // parseable glTF with the real multi-part geometry its generator script built — not a
+  // single undifferentiated box.
+  const sand3dFiles = Object.keys(SAND3D_MIN_MESH_COUNT);
+  for (const file of sand3dFiles) {
+    const absPath = path.join(PUBLIC_DIR, "assets", "furniture-sand3d", file);
+    check(`${file} exists on disk`, fs.existsSync(absPath));
+    if (!fs.existsSync(absPath)) continue;
+    const sizeBytes = fs.statSync(absPath).size;
+    check(`${file} is a real asset, not an empty/stub file (>1KB)`, sizeBytes > 1024);
+    try {
+      const scene = await parseGlb(absPath);
+      const meshCount = countMeshes(scene);
+      check(
+        `${file} is a real multi-part model (>=${SAND3D_MIN_MESH_COUNT[file]} meshes, not one undifferentiated box)`,
+        meshCount >= SAND3D_MIN_MESH_COUNT[file],
+      );
+      const box = new THREE.Box3().setFromObject(scene);
+      const size = box.getSize(new THREE.Vector3());
+      check(`${file} has a non-degenerate bounding box (all dims > 0)`, size.x > 0 && size.y > 0 && size.z > 0);
+      check(`${file}'s base sits on the floor (bbox min.y ~= 0)`, Math.abs(box.min.y) < 0.01);
+    } catch (err) {
+      check(`${file} parses as a valid glTF with real geometry`, false);
+      console.error(`  parse error: ${err}`);
+    }
+  }
+
+  check("LICENSE.txt is vendored alongside the sand3d assets", fs.existsSync(path.join(PUBLIC_DIR, "assets", "furniture-sand3d", "LICENSE.txt")));
+
   // The real wiring: every entry in FURNITURE_GLB_ASSETS must point at a file that actually
   // exists, and the scale computed for that type's real catalog footprint must be sane
   // (positive, and close enough to 1x that the real mesh fills roughly the same floor
   // footprint as the parametric placeholder it replaces, not visibly tiny or room-filling).
   const wiredTypes = Object.keys(FURNITURE_GLB_ASSETS) as Array<keyof typeof FURNITURE_GLB_ASSETS>;
+  const expectedWiredTypes = [
+    "sofa",
+    "bed_queen",
+    "dining_table",
+    "dining_chair",
+    "desk",
+    "wardrobe",
+    "dresser",
+    "nightstand",
+    "tv_stand",
+    "bookshelf",
+    "fridge",
+    "stove",
+    "kitchen_island",
+  ];
   check(
-    "all 5 vendored furniture types are wired to a real mesh (sofa, bed_queen, dining_table, dining_chair, desk)",
-    wiredTypes.length === 5 &&
-      ["sofa", "bed_queen", "dining_table", "dining_chair", "desk"].every((t) => wiredTypes.includes(t as (typeof wiredTypes)[number])),
+    `all ${expectedWiredTypes.length} vendored furniture types are wired to a real mesh (${expectedWiredTypes.join(", ")})`,
+    wiredTypes.length === expectedWiredTypes.length &&
+      expectedWiredTypes.every((t) => wiredTypes.includes(t as (typeof wiredTypes)[number])),
   );
 
   for (const type of wiredTypes) {

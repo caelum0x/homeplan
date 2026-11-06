@@ -41,3 +41,8 @@ yarn-error.log*
 next-env.d.ts
 .gstack/
 .env*.local
+
+# scripts/sand3d's Python venv (pip install sand3d) — regenerable, not vendored.
+# See scripts/sand3d/common.py's module docstring for how to recreate it.
+scripts/sand3d/.venv/
+scripts/sand3d/__pycache__/

@@ -1,0 +1,43 @@
+HomePlan sand3d-generated furniture/appliance meshes
+=====================================================
+
+Generation method: sand3d (https://github.com/Sandflow-ai/sand3d), an Apache-2.0
+licensed Python tool for writing parametric 3D models as code (`pip install sand3d`).
+Output produced by a tool under a permissive license belongs to whoever ran it --
+no attribution to the sand3d project is required, but is documented here anyway for
+provenance.
+
+Every .glb in this directory is ORIGINALLY generated for HomePlan, from scratch, by
+the real part-based Python programs committed at scripts/sand3d/*.py in this repo
+(wardrobe.py, dresser.py, nightstand.py, tv_stand.py, bookshelf.py, fridge.py,
+stove.py, kitchen_island.py — plus scripts/sand3d/common.py for the shared
+inch/foot-to-centimetre unit helpers). Each program is regenerable: re-run it with
+the venv at scripts/sand3d/.venv (`pip install sand3d`, Python 3.13) to reproduce
+the exact same mesh.
+
+Each mesh is built from real named parts (a cabinet body, a shelf board, a drawer
+pull, a cooktop burner ring, etc. -- see each .py file), not a single undecorated
+box, and is dimensioned to match the exact real-world measurements already used by
+this project's parametric furniture fallback in components/FloorPlan3D.tsx and
+lib/layout/furniture.ts's FURNITURE_CATALOG:
+
+  wardrobe.glb        -- 4ft x 2ft footprint, 72in tall (wardrobe)
+  dresser.glb         -- 3.5ft x 1.6ft footprint, 32in tall (dresser)
+  nightstand.glb      -- 1.6ft x 1.6ft footprint, 24in tall (nightstand)
+  tv_stand.glb         -- 4.5ft x 1.3ft footprint, 20in tall (tv_stand)
+  bookshelf.glb        -- 3ft x 1.1ft footprint, 72in tall, 3 real shelf boards (bookshelf)
+  fridge.glb           -- 2.8ft x 2.6ft footprint, 68in tall (fridge)
+  stove.glb            -- 2.5ft x 2.2ft footprint, 36in body + cooktop slab (stove)
+  kitchen_island.glb   -- 5.5ft x 3ft footprint, 36in counter height (kitchen_island)
+
+Wired into the live 3D view the same way the public/assets/furniture-cc0/ Kenney
+meshes already are: lib/furnitureAssets.ts's FURNITURE_GLB_ASSETS map + a
+non-blocking GLTFLoader swap-in in components/FloorPlan3D.tsx (parametric
+placeholder renders immediately, real mesh replaces it in place once loaded,
+silent fallback to the placeholder on any load failure).
+
+Generated 2026-11-06 as the second real pass of HomePlan's furniture-realism work
+(see plans/homeplan.md) -- the first pass vendored 5 external CC0 Kenney meshes;
+this pass closes the remaining gap (wardrobe, dresser, nightstand, TV stand,
+bookshelf, fridge, stove/range, kitchen island) with originally-generated geometry
+instead of a second external asset search.
