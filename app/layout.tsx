@@ -37,6 +37,11 @@ export const metadata: Metadata = {
   // production origin is what tells search engines which URL actually counts.
   alternates: {
     canonical: "/",
+    // AI-discoverability pass (2026-11-06, same pattern as scribase.com — see
+    // plans/scribase.md's 2026-11-06 "AI-readable" entry): points an AI crawler/agent
+    // at the real markdown mirror of this exact page (app/index.md/route.ts) instead of
+    // the client-rendered React tree, via a real <link rel="alternate" type="text/markdown">.
+    types: { "text/markdown": `${APP_URL}/index.md` },
   },
   // Real Open Graph/Twitter Card tags — previously missing entirely (confirmed by the
   // 2026-10-27 hero-image session: it grepped layout.tsx/page.tsx for any og:image/
@@ -59,6 +64,14 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     images: ["/hero-3d.png"],
+  },
+  // AI-discoverability pass (2026-11-06): a one-line, fact-dense summary an AI
+  // assistant can lift directly when answering "what is HomePlan" without having to
+  // parse the full rendered page. Same `<meta name="ai-summary">` convention shipped
+  // for scribase.com (plans/scribase.md, 2026-11-06).
+  other: {
+    "ai-summary":
+      "HomePlan generates a real, computed floor plan (not an AI picture) with room-by-room dimensions from a plain-language description. Free single-story generation with no signup; HomePlan Pro ($49/mo hosted, free self-hosted/MIT) unlocks multi-story, L-shaped footprints, and PDF/DXF/IFC export. See /compare for an honest comparison vs. Maket.ai and ARCHITEChTURES.",
   },
 };
 
