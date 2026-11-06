@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { answerZoningQuestion, planToFacts } from "@/lib/zoningAssistant";
+import { answerZoningQuestion, planToFacts, MAX_DOCUMENT_LENGTH } from "@/lib/zoningAssistant";
 import type { FloorPlan } from "@/lib/layout/types";
 
 // Same reasoning as app/api/vectorize-plan/route.ts: the free-tier reasoning models in
@@ -47,6 +47,10 @@ export async function POST(request: Request) {
   }
   if (!isFloorPlan(body.plan)) {
     return NextResponse.json({ error: "A real generated plan is required to ground the answer." }, { status: 400 });
+  }
+
+  if (typeof body.documentText === "string" && body.documentText.length > MAX_DOCUMENT_LENGTH) {
+    return NextResponse.json({ error: "documentText is too large." }, { status: 400 });
   }
 
   const stories = body.stories === 2 ? 2 : 1;

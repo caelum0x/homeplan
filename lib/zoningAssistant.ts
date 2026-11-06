@@ -35,7 +35,11 @@ const TEXT_MODELS = [
 ] as const;
 
 const MAX_QUESTION_LENGTH = 600;
-const MAX_DOCUMENT_LENGTH = 8_000;
+// Exported so app/api/zoning/route.ts can reject an oversized documentText at the
+// request boundary (same convention as /api/vectorize-plan's MAX_IMAGE_DATA_URL_LENGTH)
+// instead of accepting it as valid input and only truncating it here, after the full
+// body has already been read into memory.
+export const MAX_DOCUMENT_LENGTH = 8_000;
 
 export interface PlanFacts {
   footprintW: number;
