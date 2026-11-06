@@ -54,7 +54,18 @@ function newGuid(): string {
 }
 
 function stepString(s: string): string {
-  return `'${s.replace(/'/g, "''")}'`;
+  // Real STEP/P21 escaping (ISO 10303-21), verified against IfcOpenShell's own character
+  // decoder (src/ifcparse/IfcCharacterDecoder.cpp): a bare backslash is reserved as the
+  // introducer for extended-character escape sequences (\X\, \X2\..\X0\, \X4\..\X0\, \S\, \P\),
+  // so a literal backslash in free text (room names are real user-editable text via
+  // FloorPlanStudio's rename and the chat-edit "rename" command, lib/layout/chatEdit.ts) must
+  // be escaped by doubling it, exactly like an apostrophe -- otherwise a backslash followed by
+  // S/P/X/N/F (e.g. a room named "Storage\Shelf") throws IfcInvalidTokenException in a real
+  // strict STEP parser, or silently mis-decodes if it happens to look like a valid escape.
+  // Must run before the apostrophe replacement so a backslash introduced by escaping itself
+  // is never re-escaped (replacing '\\' does not produce any new "'" characters, so order is
+  // safe either way, but backslash-first matches the standard's own escaping precedent).
+  return `'${s.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
 }
 
 function stepReal(n: number): string {
@@ -95,6 +106,15 @@ interface Ctx {
    * IfcLocalPlacement, so every swept-solid profile below is just an axis-aligned
    * rectangle at local origin. */
   identityAxis3DId: number;
+  /** World +Z IfcDirection, reused as every placed object's own Axis in `objectPlacement` below.
+   * Real bug fixed 2026-11-06: IfcAxis2Placement3D's own WHERE rule (`AxisAndRefDirProvision`
+   * in the real IFC4 EXPRESS schema) requires Axis and RefDirection to be BOTH present or BOTH
+   * absent — `objectPlacement` always supplies a real RefDirection (the wall/door/window's own
+   * in-plane direction), so Axis must also be supplied, not `$`, or every single placed room/
+   * wall/door/window in the file violates that WHERE rule. Using world Z here is exactly what
+   * the schema's own IfcBuildAxes default would pick for an omitted Axis anyway, so this changes
+   * no geometry, only makes the already-intended rotation spec-valid. */
+  worldZId: number;
 }
 
 function point3d(step: StepWriter, x: number, y: number, z: number): number {
@@ -141,13 +161,15 @@ function boxShapeRepresentation(ctx: Ctx, lengthM: number, thicknessM: number, h
 
 /** Real-world IfcLocalPlacement for one element: `(xFt,yFt,zFt)` converted to metres, rotated
  * so its local X axis points along `(dirXFt,dirYFt)` (normalized) — e.g. a wall's own direction,
- * or a door/window's opening-width direction derived from its `orientation` field. */
+ * or a door/window's opening-width direction derived from its `orientation` field. Always
+ * supplies both Axis (world Z) and RefDirection together on the IfcAxis2Placement3D — see
+ * `Ctx.worldZId`'s own comment for why Axis can't be left `$` once RefDirection is given. */
 function objectPlacement(ctx: Ctx, xFt: number, yFt: number, zFt: number, dirXFt: number, dirYFt: number): number {
-  const { step, storeyPlacementId } = ctx;
+  const { step, storeyPlacementId, worldZId } = ctx;
   const location = point3d(step, xFt * FT_TO_M, yFt * FT_TO_M, zFt * FT_TO_M);
   const len = Math.hypot(dirXFt, dirYFt) || 1;
   const refDir = direction3d(step, dirXFt / len, dirYFt / len, 0);
-  const axis = axis2Placement3d(step, location, "$", step.ref(refDir));
+  const axis = axis2Placement3d(step, location, step.ref(worldZId), step.ref(refDir));
   return localPlacement(step, step.ref(storeyPlacementId), axis);
 }
 
@@ -296,7 +318,10 @@ export function floorPlanToIfc(plan: FloorPlan): string {
   step.add(`IFCRELAGGREGATES(${stepString(newGuid())},$,$,$,${step.ref(building)},${step.refs([storey])})`);
 
   const identityAxis3DId = axis2Placement3d(step, worldOrigin, "$", "$");
-  const ctx: Ctx = { step, contextId: context, storeyPlacementId: storeyPlacement, identityAxis3DId };
+  // Reuse the same world-+Z IfcDirection instance (#worldZ, already created above for the
+  // geometric context's own WorldCoordinateSystem) as every placed object's Axis — see
+  // `Ctx.worldZId`'s comment.
+  const ctx: Ctx = { step, contextId: context, storeyPlacementId: storeyPlacement, identityAxis3DId, worldZId: worldZ };
 
   const containedIds: number[] = [];
 
@@ -395,7 +420,16 @@ export function floorPlanToIfc(plan: FloorPlan): string {
     }
   }
 
-  step.add(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${stepString(newGuid())},$,$,$,${step.refs(containedIds)},${step.ref(storey)})`);
+  // IfcRelContainedInSpatialStructure.RelatedElements is declared `SET [1:?] OF IfcProduct` in
+  // the real IFC4 schema — a minimum of 1, not 0. An all-rooms-deleted plan (reachable for
+  // real: removeRoom has no "keep at least one room" guard, lib/layout/edit.ts) would otherwise
+  // emit this relationship with an empty `()` set, violating that cardinality bound outright
+  // (a stricter rejection than a WHERE-rule violation, since it's the attribute's own domain).
+  // Simplest spec-valid fix: only emit the relationship when there's at least one real element
+  // to relate; an empty storey with no contained elements is itself perfectly valid IFC.
+  if (containedIds.length > 0) {
+    step.add(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${stepString(newGuid())},$,$,$,${step.refs(containedIds)},${step.ref(storey)})`);
+  }
 
   const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "");
   const header = [

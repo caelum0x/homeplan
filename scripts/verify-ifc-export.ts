@@ -7,6 +7,7 @@ import { IfcAPI } from "web-ifc";
 import { parseDescription } from "../lib/parseDescription";
 import { generateFloorPlan } from "../lib/layout/generate";
 import { floorPlanToIfc } from "../lib/exportIfc";
+import type { FloorPlan } from "../lib/layout/types";
 
 let problems = 0;
 function check(label: string, cond: boolean) {
@@ -25,6 +26,76 @@ const IFCWINDOW = 3304561284;
 const IFCOPENINGELEMENT = 3588315303;
 const IFCRELVOIDSELEMENT = 1401173127;
 const IFCRELFILLSELEMENT = 3940055652;
+const IFCAXIS2PLACEMENT3D = 2740243338;
+const IFCRELCONTAINEDINSPATIALSTRUCTURE = 3242617779;
+
+/**
+ * Real-code-review pass (2026-11-06) found and fixed three gaps the entity-count checks above
+ * can't see: (1) `objectPlacement` (lib/exportIfc.ts) built every room/wall/door/window's own
+ * IfcAxis2Placement3D with Axis=`$` but a real RefDirection, violating that entity's own
+ * `AxisAndRefDirProvision` WHERE rule (verified against the real IFC4 EXPRESS schema,
+ * buildingSMART via xBimTeam/XbimEssentials's IFC4_ADD1.exp) in literally every placed object —
+ * a schema violation a lenient reader like web-ifc never flags, but a WHERE-rule-aware
+ * validator or a stricter importer could. (2) `stepString` only escaped `'`, not `\\` — a bare
+ * backslash is STEP/P21's own escape introducer (verified against IfcOpenShell's real character
+ * decoder, src/ifcparse/IfcCharacterDecoder.cpp), so a room renamed (a real feature —
+ * FloorPlanStudio's rename + chatEdit.ts's "rename" command, both arbitrary user text) to
+ * contain one could throw a hard parse error or silently mis-decode in a strict parser. (3) an
+ * all-rooms-deleted plan (reachable: `removeRoom` has no "keep >=1" guard) emitted
+ * IfcRelContainedInSpatialStructure.RelatedElements as an empty `()` set, violating that
+ * attribute's own `SET [1:?]` cardinality. These three checks exercise exactly those gaps so a
+ * future regression fails loud here instead of only in a real BIM tool.
+ */
+function checkAxisPlacementsAreSpecValid(api: InstanceType<typeof IfcAPI>, modelID: number, label: string) {
+  const axisIds = api.GetLineIDsWithType(modelID, IFCAXIS2PLACEMENT3D);
+  let violations = 0;
+  let bothPresentCount = 0;
+  for (let i = 0; i < axisIds.size(); i++) {
+    const line = api.GetLine(modelID, axisIds.get(i));
+    const hasAxis = line.Axis != null;
+    const hasRefDirection = line.RefDirection != null;
+    if (hasAxis !== hasRefDirection) violations++;
+    if (hasAxis && hasRefDirection) bothPresentCount++;
+  }
+  console.log(`${label}: ${axisIds.size()} IFCAXIS2PLACEMENT3D, ${bothPresentCount} with both Axis+RefDirection, ${violations} WHERE-rule violation(s)`);
+  check(`${label}: every IfcAxis2Placement3D has Axis+RefDirection both present or both absent (AxisAndRefDirProvision)`, violations === 0);
+  // Every real room/wall/door/window placement supplies a RefDirection, so this should never be 0
+  // on a plan that actually has placed elements -- confirms the check isn't vacuously passing.
+  check(`${label}: at least one real IfcAxis2Placement3D has both Axis+RefDirection (the fix is actually exercised)`, bothPresentCount > 0);
+}
+
+/** Proves `stepString`'s escaping survives a real parser round-trip, not just "didn't throw" --
+ * renames one room to a string containing every STEP-special character this file's own review
+ * flagged (apostrophe, backslash, a quote) and confirms the exact original string reads back. */
+async function checkSpecialCharacterRoomName(api: InstanceType<typeof IfcAPI>, basePlan: FloorPlan) {
+  const weirdName = `Office\\Storage's "Nook"`;
+  const plan = { ...basePlan, rooms: basePlan.rooms.map((r, i) => (i === 0 ? { ...r, label: weirdName } : r)) };
+  const ifcText = floorPlanToIfc(plan);
+  const modelID = api.OpenModel(new TextEncoder().encode(ifcText));
+  check("special-char room name: web-ifc accepted the file", modelID >= 0);
+  const spaceIds = api.GetLineIDsWithType(modelID, IFCSPACE);
+  let found = false;
+  for (let i = 0; i < spaceIds.size(); i++) {
+    const line = api.GetLine(modelID, spaceIds.get(i));
+    if (line.Name?.value === weirdName) found = true;
+  }
+  check(`special-char room name "${weirdName}" round-trips back exactly via a real parser`, found);
+  api.CloseModel(modelID);
+}
+
+/** Proves an all-rooms-deleted plan (reachable in the real app, see the comment above) exports
+ * and parses as a real, if nearly empty, IFC file instead of emitting a cardinality-violating
+ * empty SET on IfcRelContainedInSpatialStructure. */
+async function checkEmptyPlan(api: InstanceType<typeof IfcAPI>) {
+  const emptyPlan: FloorPlan = { footprint: { w: 0, h: 0 }, totalAreaSqft: 0, rooms: [], walls: [], doors: [], windows: [], furniture: [], warnings: [] };
+  const ifcText = floorPlanToIfc(emptyPlan);
+  check("empty plan: no IfcRelContainedInSpatialStructure emitted with zero contained elements", !ifcText.includes("IFCRELCONTAINEDINSPATIALSTRUCTURE"));
+  const modelID = api.OpenModel(new TextEncoder().encode(ifcText));
+  check("empty plan: web-ifc still accepted the file as a real (if empty) model", modelID >= 0);
+  check("empty plan: zero IFCSPACE/IFCWALL/IFCDOOR/IFCWINDOW, as expected", [IFCSPACE, IFCWALL, IFCDOOR, IFCWINDOW].every((t) => api.GetLineIDsWithType(modelID, t).size() === 0));
+  check("empty plan: zero IFCRELCONTAINEDINSPATIALSTRUCTURE (not an invalid empty-set one)", api.GetLineIDsWithType(modelID, IFCRELCONTAINEDINSPATIALSTRUCTURE).size() === 0);
+  api.CloseModel(modelID);
+}
 
 /**
  * Real structural check (2026-11-06, closing a gap found inspecting this exporter's own
@@ -115,6 +186,7 @@ async function main() {
   check("IFCWINDOW count matches plan.windows.length exactly", windowCount === (plan.windows ?? []).length);
 
   checkOpeningCoverage(api, modelID, "first plan", plan.doors.length + (plan.windows ?? []).length);
+  checkAxisPlacementsAreSpecValid(api, modelID, "first plan");
 
   api.CloseModel(modelID);
 
@@ -136,8 +208,12 @@ async function main() {
   check("second plan: IFCWINDOW count matches", windowCount2 === (plan2.windows ?? []).length);
 
   checkOpeningCoverage(api, modelID2, "second plan", plan2.doors.length + (plan2.windows ?? []).length);
+  checkAxisPlacementsAreSpecValid(api, modelID2, "second plan");
 
   api.CloseModel(modelID2);
+
+  await checkSpecialCharacterRoomName(api, plan);
+  await checkEmptyPlan(api);
 
   if (problems > 0) {
     console.error(`\n${problems} check(s) failed.`);
