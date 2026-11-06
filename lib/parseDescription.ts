@@ -14,6 +14,16 @@ export function parseDescription(raw: string): BriefInput {
   const text = raw.toLowerCase();
 
   const isStudio = /\bstudio\b/.test(text);
+  // A real ADU (accessory dwelling unit) / granny flat / in-law suite / casita — a
+  // genuinely small, complete standalone unit most jurisdictions cap around
+  // 600-1200 sqft by right. Same bug class as `isStudio` above, generalized
+  // 2026-11-06 (not re-derived): every place below that branches on `isStudio` for
+  // a small-footprint default now also checks `isADU`, since an ADU needs the exact
+  // same "don't apply full-house minimums to a small unit" treatment a studio
+  // already gets — see `BriefInput.isADU` (lib/layout/types.ts) for the real bug
+  // this fixes.
+  const isADU = /\badu\b|\baccessory dwelling unit\b|\bgranny flat\b|\bin-law suite\b|\bcasita\b/.test(text);
+  const isCompactUnit = isStudio || isADU;
   const bedrooms = firstNumber(
     text,
     [
@@ -21,7 +31,7 @@ export function parseDescription(raw: string): BriefInput {
       /(\d+(?:\.\d+)?)\s*bd/,
       /(\d+(?:\.\d+)?)\s*br\b/,
     ],
-    isStudio ? 1 : 3,
+    isCompactUnit ? 1 : 3,
   );
 
   const bathrooms = firstNumber(
@@ -30,14 +40,14 @@ export function parseDescription(raw: string): BriefInput {
       /(\d+(?:\.\d+)?)\s*[- ]?\s*bath(?:room)?s?/,
       /(\d+(?:\.\d+)?)\s*ba\b/,
     ],
-    // A real studio apartment is one bathroom by convention (the 2-bath default
-    // below is sized for a real multi-bedroom house program). Found live, 2026-11-05,
-    // generating a real "studio apartment 450 sqft" brief through the live site as
-    // part of Maket.ai-parity quality verification: isStudio was already detected
+    // A real studio apartment (or ADU — same reasoning, generalized 2026-11-06) is one
+    // bathroom by convention (the 2-bath default below is sized for a real
+    // multi-bedroom house program). Found live, 2026-11-05 (studio) and 2026-11-06
+    // (ADU — same bug, previously un-generalized): isStudio was already detected
     // above but only ever adjusted the bedroom default — bathrooms silently
     // kept the 2-bath house default, which alone was enough to make every one of
     // the 3 generated variants warn that the bathrooms/bedroom didn't fit.
-    isStudio ? 1 : 2,
+    isCompactUnit ? 1 : 2,
   );
 
   const sqft = firstNumber(
@@ -53,10 +63,15 @@ export function parseDescription(raw: string): BriefInput {
   // (there is no separate dining room to combine or omit) — forcing openPlan here
   // is what actually makes buildRoomProgram() (lib/layout/program.ts) emit one
   // great_room instead of 3 separate public rooms crammed into studio-scale sqft.
+  // An ADU isn't open-plan by the same DEFINITIONAL reason a studio is (it can have
+  // a real separate bedroom — see isADU's own doc comment), but it needs the exact
+  // same TREATMENT: a small complete unit's living/kitchen/dining still reads as one
+  // open room in practice, and merging them is what keeps each one from being
+  // measured against a full house's minimum it was never going to hit at this sqft.
   // Same live-verification pass as the bathroom default above: without this, every
-  // "studio apartment" brief generated a living + kitchen + separate dining room,
+  // "studio apartment"/ADU brief generated a living + kitchen + separate dining room,
   // each scaled below its own comfortable minimum, with warnings on all 3 variants.
-  const openPlan = isStudio || /open[- ]?(plan|concept)|open\s+kitchen|great\s?room/.test(
+  const openPlan = isCompactUnit || /open[- ]?(plan|concept)|open\s+kitchen|great\s?room/.test(
     text,
   );
   const hasGarage = /garage|carport/.test(text);
@@ -74,6 +89,7 @@ export function parseDescription(raw: string): BriefInput {
     ...(lShaped ? { lShaped } : {}),
     ...(styleTopologyPreferences ? { styleTopologyPreferences } : {}),
     ...(isStudio ? { isStudio } : {}),
+    ...(isADU ? { isADU } : {}),
     bedrooms: clamp(Math.round(bedrooms), 1, 8),
     bathrooms: clamp(roundHalf(bathrooms), 1, 6),
     sqft: clamp(Math.round(sqft), 400, 12000),

@@ -112,6 +112,8 @@ function makeRoom(id: string, type: RoomType, label: string, zone: ProgramRoom["
 export function buildRoomProgram(input: BriefInput): RoomProgram {
   const entry = makeRoom("entry", "entry", "Entry", "public");
 
+  const isCompactUnit = !!(input.isStudio || input.isADU);
+
   const publicRooms: ProgramRoom[] = [];
   if (input.openPlan) {
     publicRooms.push(makeRoom("great_room", "great_room", "Great Room (Living + Kitchen + Dining)", "public"));
@@ -139,15 +141,22 @@ export function buildRoomProgram(input: BriefInput): RoomProgram {
     input.isStudio ? "Sleeping Area" : "Primary Bedroom",
     "private",
   );
-  if (input.isStudio) {
-    // A real studio's "bedroom" is an alcove/nook sized for a bed + nightstand +
-    // closet, not a full house's primary suite — applying the full-house 140 sqft
-    // minimum (and 180 sqft ideal) to a studio-scale brief is exactly what made
-    // every studio-apartment brief warn as "doesn't comfortably fit" even though
-    // a real studio is specifically designed around a smaller sleeping zone.
-    // Figures are a real alcove-studio convention (NYC Housing Maintenance Code's
-    // own room-size guidance and typical studio floor plans put a sleeping nook
-    // around 70-100 sqft), not an arbitrary shrink.
+  // A real studio's "bedroom" is an alcove/nook sized for a bed + nightstand +
+  // closet, not a full house's primary suite — applying the full-house 140 sqft
+  // minimum (and 180 sqft ideal) to a studio-scale brief is exactly what made
+  // every studio-apartment brief warn as "doesn't comfortably fit" even though
+  // a real studio is specifically designed around a smaller sleeping zone.
+  // Figures are a real alcove-studio convention (NYC Housing Maintenance Code's
+  // own room-size guidance and typical studio floor plans put a sleeping nook
+  // around 70-100 sqft), not an arbitrary shrink.
+  //
+  // A real ADU needs the exact same sizing — generalized 2026-11-06 (see
+  // `BriefInput.isADU`'s doc comment for the real bug this closes): unlike a
+  // studio, an ADU's bedroom stays a genuinely separate room (keeps the ordinary
+  // "Primary Bedroom" label above, never relabeled "Sleeping Area" — there's a
+  // real door here, not an open alcove), it just isn't sized like a full house's
+  // primary suite either.
+  if (isCompactUnit) {
     primaryBedroom.idealArea = 100;
     primaryBedroom.minArea = 64;
     primaryBedroom.minWidth = 8;

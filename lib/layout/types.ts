@@ -237,4 +237,28 @@ export interface BriefInput {
    * differently from a 1-bedroom house below this flag's addition.
    */
   isStudio?: boolean;
+  /**
+   * A real ADU (accessory dwelling unit) / granny flat / in-law suite: a genuinely
+   * small, complete standalone unit — most US jurisdictions cap these around
+   * 600-1200 sqft by right — not a small house with the SAME house-scale room
+   * minimums as a 2000+ sqft brief. Undefined/false = every existing brief's
+   * behavior, completely unchanged. Same bug class, and the same fix, as
+   * `isStudio` above (generalized 2026-11-06, not re-derived): when true,
+   * `parseDescription` forces `openPlan=true` (merges living/kitchen/dining into
+   * one great_room instead of 3 separate rooms each measured against a full
+   * house's minimum) and defaults bathrooms to 1 instead of 2, and
+   * `buildRoomProgram` (lib/layout/program.ts) shrinks the primary bedroom to the
+   * same real small-footprint size `isStudio` already uses. Unlike `isStudio`,
+   * an ADU genuinely has its own separate bedroom (a real door, not merged into
+   * the great room) — so the room keeps its ordinary "Primary Bedroom"/"Bedroom"
+   * label, it just isn't sized like a full house's primary suite. Real gap
+   * found live, 2026-11-06, generating a real "standalone 1-bed ADU, kitchenette,
+   * full bath, stacked laundry, single story, 600 sqft" brief through the live
+   * generator: `isADU` didn't exist yet, so the engine applied the full-house
+   * living+kitchen+dining(+office) program and a 2-bath default to a 600 sqft
+   * unit, producing 7-8 warnings on every variant — the exact same root cause
+   * `isStudio` was added to fix for studio apartments on 2026-11-05, just never
+   * extended past the literal word "studio".
+   */
+  isADU?: boolean;
 }
