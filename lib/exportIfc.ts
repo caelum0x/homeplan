@@ -13,7 +13,7 @@
 // not a separately-invented set of numbers.
 
 import { randomUUID } from "crypto";
-import type { FloorPlan } from "./layout/types";
+import type { FloorPlan, Wall } from "./layout/types";
 
 const FT_TO_M = 0.3048;
 
@@ -151,12 +151,113 @@ function objectPlacement(ctx: Ctx, xFt: number, yFt: number, zFt: number, dirXFt
   return localPlacement(step, step.ref(storeyPlacementId), axis);
 }
 
+/** Perpendicular distance (ft) from a door/window's opening center to a candidate host wall's
+ * own line is accepted up to this tolerance — real doors/windows are generated flush with
+ * their host wall's centerline (lib/layout/generate.ts's buildWallsAndDoors derives both from
+ * the same room geometry), so any real match lands well under 0.1ft; this is generous headroom,
+ * not a loose guess. */
+const HOST_WALL_MAX_DISTANCE_FT = 0.5;
+/** Collinearity tolerance (ft) for deciding a wall is "horizontal" (y1≈y2) vs "vertical" (x1≈x2). */
+const WALL_AXIS_EPS_FT = 0.05;
+
+/**
+ * Finds the real wall a door/window's opening is actually cut into, purely from placed
+ * geometry — `Door`/`Window` only carry the two ROOM ids either side of the opening
+ * (lib/layout/types.ts), never a wall id, and `Wall` carries no room ids either, so this is
+ * the same kind of geometric match every other opening-aware code path in this engine already
+ * does (e.g. lib/layout/doorSwings.ts resolving a door's real swing geometry from room rects).
+ * Matches the opening's own `orientation` to a wall running along the same axis, whose segment
+ * actually spans the opening's position, picking the closest such wall if more than one
+ * candidate axis-matches (shouldn't happen for a real non-overlapping wall set, but keeps this
+ * honest rather than assuming the first match is correct).
+ */
+function findHostWall(walls: readonly Wall[], x: number, y: number, orientation: "h" | "v"): Wall | null {
+  let best: Wall | null = null;
+  let bestDistance = Infinity;
+  for (const wall of walls) {
+    const horizontal = Math.abs(wall.y1 - wall.y2) < WALL_AXIS_EPS_FT;
+    const vertical = Math.abs(wall.x1 - wall.x2) < WALL_AXIS_EPS_FT;
+    if (orientation === "h" && !horizontal) continue;
+    if (orientation === "v" && !vertical) continue;
+
+    if (horizontal) {
+      const minX = Math.min(wall.x1, wall.x2) - HOST_WALL_MAX_DISTANCE_FT;
+      const maxX = Math.max(wall.x1, wall.x2) + HOST_WALL_MAX_DISTANCE_FT;
+      if (x < minX || x > maxX) continue;
+      const distance = Math.abs(y - wall.y1);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = wall;
+      }
+    } else if (vertical) {
+      const minY = Math.min(wall.y1, wall.y2) - HOST_WALL_MAX_DISTANCE_FT;
+      const maxY = Math.max(wall.y1, wall.y2) + HOST_WALL_MAX_DISTANCE_FT;
+      if (y < minY || y > maxY) continue;
+      const distance = Math.abs(x - wall.x1);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = wall;
+      }
+    }
+  }
+  return bestDistance <= HOST_WALL_MAX_DISTANCE_FT ? best : null;
+}
+
+/**
+ * Cuts a real `IfcOpeningElement` into `hostWallId` and relates it to `filledById` (the
+ * IfcDoor/IfcWindow that occupies it) — the standard IFC authoring pattern buildingSMART's own
+ * examples use (`IfcRelVoidsElement` wall->opening, `IfcRelFillsElement` opening->door/window).
+ *
+ * Real gap found and fixed 2026-11-06, inspecting this exporter's own output structurally (not
+ * just confirming a file gets produced): every door/window was previously placed as a fully
+ * independent `IfcWall`-unrelated solid with NO relationship to its host wall at all — opened in
+ * a real BIM tool (Revit/ArchiCAD/Solibri), that reads as a completely solid, un-opened wall
+ * with a disconnected door/window-shaped box floating inside it, not a real doorway/window
+ * opening. This is exactly the class of correctness gap a BIM-native competitor's "IFC export,
+ * LOD 200+" claim is actually about — a shallow export places boxes at the right coordinates; a
+ * structurally sound one also declares WHICH element each opening belongs to and WHAT fills it,
+ * which is what every compliant IFC viewer actually uses to render the cut correctly regardless
+ * of whether the wall's own raw solid literally has a hole subtracted from it (most real-world
+ * exporters at this scale rely on the Void/Fills relationship rather than full CSG boolean
+ * geometry, which is genuinely BIM-ENGINE-level scope, not a single-session fix).
+ *
+ * The opening's own geometry is sized to the HOST WALL's thickness (not the door leaf's own
+ * thinner slab) so the void actually represents the real hole cut through the wall, not a
+ * door-leaf-shaped sliver.
+ */
+function voidAndFillOpening(
+  ctx: Ctx,
+  hostWallId: number,
+  hostWallThicknessFt: number,
+  filledById: number,
+  xFt: number,
+  yFt: number,
+  zFt: number,
+  dirXFt: number,
+  dirYFt: number,
+  widthFt: number,
+  heightFt: number,
+): void {
+  const { step } = ctx;
+  const openingShape = boxShapeRepresentation(ctx, widthFt * FT_TO_M, hostWallThicknessFt * FT_TO_M, heightFt * FT_TO_M);
+  const openingPlacement = objectPlacement(ctx, xFt, yFt, zFt, dirXFt, dirYFt);
+  const opening = step.add(
+    `IFCOPENINGELEMENT(${stepString(newGuid())},$,${stepString("Opening")},$,$,${step.ref(openingPlacement)},${step.ref(openingShape)},$,$)`,
+  );
+  step.add(`IFCRELVOIDSELEMENT(${stepString(newGuid())},$,$,$,${step.ref(hostWallId)},${step.ref(opening)})`);
+  step.add(`IFCRELFILLSELEMENT(${stepString(newGuid())},$,$,$,${step.ref(opening)},${step.ref(filledById)})`);
+}
+
 /** Builds a complete, real IFC4 file string for one floor plan — IfcProject/Site/Building/
  * BuildingStorey hierarchy, one IfcSpace per room, one IfcWall per wall segment, one IfcDoor
  * per door and one IfcWindow per window, each with real swept-solid geometry in metres and a
  * real compressed GlobalId, all grouped under the ground storey by a single
  * IfcRelContainedInSpatialStructure (the standard IFC pattern — buildingSMART's own examples
- * group a whole storey's elements in one relationship, not one per element). */
+ * group a whole storey's elements in one relationship, not one per element). Every door/window
+ * that lands on a real traceable host wall also gets a real `IfcOpeningElement` cut into that
+ * wall via `IfcRelVoidsElement`/`IfcRelFillsElement` (see `voidAndFillOpening`) — the real,
+ * structurally-necessary difference between "a box at the right coordinates" and an opening a
+ * BIM viewer actually understands as a hole in that specific wall. */
 export function floorPlanToIfc(plan: FloorPlan): string {
   const step = new StepWriter();
 
@@ -210,6 +311,10 @@ export function floorPlanToIfc(plan: FloorPlan): string {
   }
 
   // --- Walls -> IfcWall, true-length slab along the wall's own direction ---
+  // Tracked by the plan's own wall.id (not an index) so the door/window loops below can look
+  // up the real IfcWall entity + thickness of whichever wall `findHostWall` geometrically
+  // matches, to cut a real IfcOpeningElement into it (see `voidAndFillOpening`).
+  const ifcWallById = new Map<string, { ifcId: number; thicknessFt: number }>();
   for (const wall of plan.walls) {
     const dx = wall.x2 - wall.x1;
     const dy = wall.y2 - wall.y1;
@@ -223,6 +328,7 @@ export function floorPlanToIfc(plan: FloorPlan): string {
       `IFCWALL(${stepString(newGuid())},$,${stepString(wall.exterior ? "Exterior wall" : "Interior wall")},$,$,${step.ref(placement)},${step.ref(shape)},${stepString(wall.id)},$)`,
     );
     containedIds.push(ifcWall);
+    ifcWallById.set(wall.id, { ifcId: ifcWall, thicknessFt });
   }
 
   // --- Doors -> IfcDoor, real width/height, rotated onto its own opening ---
@@ -237,6 +343,24 @@ export function floorPlanToIfc(plan: FloorPlan): string {
       )},${stepReal(door.width * FT_TO_M)},$,$,$)`,
     );
     containedIds.push(ifcDoor);
+
+    const hostWall = findHostWall(plan.walls, door.x, door.y, door.orientation);
+    const hostIfcWall = hostWall ? ifcWallById.get(hostWall.id) : undefined;
+    if (hostIfcWall) {
+      voidAndFillOpening(
+        ctx,
+        hostIfcWall.ifcId,
+        hostIfcWall.thicknessFt,
+        ifcDoor,
+        door.x,
+        door.y,
+        0,
+        dirX,
+        dirY,
+        door.width,
+        DOOR_HEIGHT_FT,
+      );
+    }
   }
 
   // --- Windows -> IfcWindow, real width/height, sitting at real sill height ---
@@ -251,6 +375,24 @@ export function floorPlanToIfc(plan: FloorPlan): string {
       )},${stepReal(win.width * FT_TO_M)},$,$,$)`,
     );
     containedIds.push(ifcWindow);
+
+    const hostWall = findHostWall(plan.walls, win.x, win.y, win.orientation);
+    const hostIfcWall = hostWall ? ifcWallById.get(hostWall.id) : undefined;
+    if (hostIfcWall) {
+      voidAndFillOpening(
+        ctx,
+        hostIfcWall.ifcId,
+        hostIfcWall.thicknessFt,
+        ifcWindow,
+        win.x,
+        win.y,
+        WINDOW_SILL_HEIGHT_FT,
+        dirX,
+        dirY,
+        win.width,
+        WINDOW_PANE_HEIGHT_FT,
+      );
+    }
   }
 
   step.add(`IFCRELCONTAINEDINSPATIALSTRUCTURE(${stepString(newGuid())},$,$,$,${step.refs(containedIds)},${step.ref(storey)})`);
