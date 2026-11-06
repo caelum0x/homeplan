@@ -756,11 +756,26 @@ export function fitPlanToLot(plan: FloorPlan, lotInput: Polygon, setbackFt: numb
   }
   const footprintAreaSqft = polygonArea(footprint);
 
+  // Real bug found live, 2026-11-06: for a plain axis-aligned rectangular footprint
+  // (centroid exactly at its own bounding-box center — the common case) centered inside an
+  // AMPLE buildable area, every one of the 4 orientations genuinely ties at marginScore ~0 —
+  // there's no real preference between them. A bare `<` here lets which one "wins" be decided
+  // by sub-grid-resolution floating-point noise from searchPlacement's coarse+refine search
+  // instead of anything structural, so two floors that share the exact same real footprint
+  // (lib/layout/multiStory.ts's documented invariant) could independently land on different
+  // orientations purely from that noise — confirmed live: a real 2-story, no-garage, 7-private-
+  // room brief's ground and upper floors (byte-identical 43.5' x 32' footprint) picked 0deg and
+  // 90deg respectively against the exact same ample lot. `TIE_EPSILON` makes the tie-break
+  // deterministic: a later orientation only overrides an earlier one when it's a REAL
+  // improvement (beyond architecturally-insignificant sub-1/8"-ft noise), so every near-tie
+  // consistently keeps the first (lowest-rotation) orientation tried, regardless of which
+  // specific floor/footprint produced the noise.
+  const TIE_EPSILON = 0.01;
   let bestFeasible: { k: number; offset: Point; score: number } | null = null;
   for (let k = 0; k < 4; k++) {
     const rotated = footprint.map((p) => rotate90(p, k));
     const placement = searchPlacement(rotated, buildable);
-    if (placement.feasible && (!bestFeasible || placement.marginScore < bestFeasible.score)) {
+    if (placement.feasible && (!bestFeasible || placement.marginScore < bestFeasible.score - TIE_EPSILON)) {
       bestFeasible = { k, offset: placement.offset, score: placement.marginScore };
     }
   }
@@ -928,11 +943,15 @@ export function fitMultiStoryPlanToLot(floors: FloorPlan[], lotInput: Polygon, s
   }
   const widestFootprintAreaSqft = Math.max(...footprints.map(polygonArea));
 
+  // Same deterministic tie-break as fitPlanToLot above (see its comment for the real bug
+  // this prevents) — kept at the same 0.01ft epsilon for consistency between the two
+  // orientation-search loops.
+  const TIE_EPSILON = 0.01;
   let bestFeasible: { k: number; offset: Point; score: number } | null = null;
   for (let k = 0; k < 4; k++) {
     const rotatedFootprints = footprints.map((fp) => fp.map((p) => rotate90(p, k)));
     const placement = searchPlacementMulti(rotatedFootprints, buildable);
-    if (placement.feasible && (!bestFeasible || placement.marginScore < bestFeasible.score)) {
+    if (placement.feasible && (!bestFeasible || placement.marginScore < bestFeasible.score - TIE_EPSILON)) {
       bestFeasible = { k, offset: placement.offset, score: placement.marginScore };
     }
   }

@@ -372,11 +372,21 @@ console.log(
 
   // A lot narrower than the ground floor's real footprint width but wide enough for the upper
   // floor's — this forces ground to rotate 90deg to fit while upper, already narrow enough,
-  // has no structural need to.
+  // has no structural need to. Derived directly from the upper floor's own real width (plus a
+  // small margin) rather than the ground floor's height: the two aren't interchangeable once
+  // the engine's own footprint ratio changes (a wider/shallower footprint shrinks ground's
+  // height while GROWING both floors' shared core width) — found live, 2026-11-06, re-running
+  // this exact check after a real layout-engine fix changed the default multi-story aspect
+  // ratio: the old height-derived lot width (~32.5ft) ended up narrower than the upper floor's
+  // own new (wider) core width too, so upper needed to rotate here as well and this scenario
+  // stopped demonstrating the real bug it exists to catch. The "sanity" check above (ground's
+  // real width > upper's real width + 1ft) already guarantees this margin keeps the lot
+  // narrower than ground's real width, so ground is still genuinely forced to rotate.
+  const lotWidth = upperFpBounds.maxX - upperFpBounds.minX + 0.5;
   const divergingLot = [
     { x: 0, y: 0 },
-    { x: groundFpBounds.maxY - groundFpBounds.minY + 0.5, y: 0 },
-    { x: groundFpBounds.maxY - groundFpBounds.minY + 0.5, y: 60 },
+    { x: lotWidth, y: 0 },
+    { x: lotWidth, y: 60 },
     { x: 0, y: 60 },
   ];
   const groundIndependent = fitPlanToLot(ground, divergingLot, 0);

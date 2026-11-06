@@ -14,7 +14,7 @@ import { computeDoorSwings } from "./doorSwings";
 export const HALLWAY_WIDTH = 3.5;
 export const DOOR_WIDTH = 3;
 /** Width : depth ratio for the main footprint — a mild rectangle, not a square or a shoebox. */
-const ASPECT_RATIO = 1.35;
+export const ASPECT_RATIO = 1.35;
 /**
  * Once the private zone needs 2 bedroom rows (3+ bedrooms/baths), a wide-and-shallow
  * footprint forces whichever row has fewer rooms (typically the primary suite) to span

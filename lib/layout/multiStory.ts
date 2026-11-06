@@ -42,6 +42,7 @@ import {
   checkAspectRatios,
   checkGarageAccess,
   checkMinimums,
+  ASPECT_RATIO,
   computeBaselineAspectRatio,
   layoutPrivateZone,
   minSaneDepthForRow,
@@ -82,7 +83,7 @@ export function generateMultiStoryPlan(input: BriefInput, aspectRatio?: number):
 
   // ---- One footprint, shared by both floors.
   const perFloorArea = input.sqft / 2;
-  const requested = aspectRatio ?? computeBaselineAspectRatio(program);
+  const requested = aspectRatio ?? pickMultiStoryBaselineRatio(input);
   const resolved = Math.min(MAX_ASPECT_RATIO, Math.max(MIN_ASPECT_RATIO, requested));
   const width = roundTo(Math.sqrt(perFloorArea * resolved), 0.5);
   const depth = roundTo(perFloorArea / width, 0.5);
@@ -160,11 +161,47 @@ export function generateMultiStoryPlan(input: BriefInput, aspectRatio?: number):
 
 /** Same Compact/Classic/Wide variants as generateFloorPlanOptions, each a real independent 2-story layout. */
 export function generateMultiStoryOptions(input: BriefInput): FloorPlanOption[] {
-  const baseline = computeBaselineAspectRatio(buildRoomProgram(input));
+  const baseline = pickMultiStoryBaselineRatio(input);
   return LAYOUT_VARIANTS.map((variant) => {
     const { floors } = generateMultiStoryPlan(input, baseline * variant.ratioMultiplier);
     return { variant, plan: floors[0], floors };
   });
+}
+
+/**
+ * Multi-story counterpart of `computeBaselineAspectRatio` (generate.ts) — this file's only
+ * caller of a baseline ratio. That function's `ASPECT_RATIO_DEEP` (0.78) correction exists
+ * because a SINGLE-STORY private zone only ever owns PART of one shared footprint's depth
+ * (the public zone takes the rest); going deeper is what keeps a 3+-bedroom private zone's
+ * rows from going wide-and-shallow there. A 2-story UPPER floor's private zone already owns
+ * its own floor's *entire* depth end to end — applying the exact same correction on top of
+ * that over-corrects, squeezing every row's width-per-room down further, which actively hurts
+ * once a row mixes room sizes (e.g. a primary bedroom + its much-smaller ensuite bath): the
+ * big room still needs real width, so the small one gets starved into exactly the kind of
+ * sliver `ASPECT_RATIO_DEEP` was trying to prevent in the first place.
+ *
+ * Real bug found live, 2026-11-06: a real "2-story 4 bed 2.5 bath, 2900 sqft" family-home
+ * brief's every variant warned the upper floor's Primary Bath (and, for 2 of 3, a secondary
+ * bedroom/bathroom too) was an unrealistic 3.8-4.2:1+ sliver, reproducible across the whole
+ * 2,800-3,200 sqft range. Root-caused (not guessed) by sweeping `generateMultiStoryPlan`'s own
+ * `aspectRatio` directly: `ASPECT_RATIO_DEEP` is the one variable that flips a broken result
+ * clean. But always using the plain `ASPECT_RATIO` instead is ALSO not a safe universal
+ * answer — re-running every existing `scripts/verify-multistory.ts` brief found it can
+ * reintroduce the opposite "bowling alley" sliver on a BIGGER private-room-count program
+ * (a real 5bed/3.5bath/3600sqft brief's Primary Bedroom came out 30.5' x 9.5', 3.2:1, a shape
+ * that specific brief never had under the deep ratio). So this doesn't guess a single
+ * constant: it actually runs BOTH real candidates end to end and keeps whichever produces
+ * fewer total structural warnings across both floors, ties going to the original deep ratio
+ * (preserves every already-clean case's exact footprint/behavior, including
+ * `scripts/verify-lot-fit.ts`'s floor-to-floor orientation-consistency checks, which depend
+ * on the specific footprint a given brief produces).
+ */
+function pickMultiStoryBaselineRatio(input: BriefInput): number {
+  const program = buildRoomProgram(input);
+  const deepCandidate = computeBaselineAspectRatio(program);
+  if (deepCandidate === ASPECT_RATIO) return deepCandidate; // <3 private rooms: the deep correction never applied anyway, nothing to compare
+  const countWarnings = (ratio: number) => generateMultiStoryPlan(input, ratio).floors.reduce((sum, f) => sum + f.warnings.length, 0);
+  return countWarnings(ASPECT_RATIO) < countWarnings(deepCandidate) ? ASPECT_RATIO : deepCandidate;
 }
 
 // ---------------------------------------------------------------------------
