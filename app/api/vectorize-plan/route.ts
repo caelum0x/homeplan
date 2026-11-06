@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { generateFloorPlanOptions } from "@/lib/layout/generate";
 import { vectorizeFloorPlanImage } from "@/lib/visionBrief";
+import { callerIp, checkAndRecordRouteRateLimit } from "@/lib/entitlements";
 
 // The free-tier reasoning model in the fallback chain (lib/visionBrief.ts) can take
 // 10-20s to respond; the two instant models ahead of it fail fast on 429 when
 // rate-limited. Default Vercel function duration (10s) isn't enough headroom for
 // the full chain, so this route gets a longer budget.
 export const maxDuration = 60;
+
+// Caller-level rate limit (see lib/entitlements.ts#checkAndRecordRouteRateLimit) -- the
+// tightest budget of the five AI-assist routes, since every call here reaches the
+// free-tier OpenRouter vision chain (no deterministic fast path to fall through to first).
+const VECTORIZE_MAX_PER_MINUTE = 10;
 
 interface VectorizeRequestBody {
   imageDataUrl?: unknown;
@@ -27,6 +33,14 @@ const MAX_IMAGE_DATA_URL_LENGTH = 12_000_000; // ~8MB binary, base64-inflated, m
  * still becomes a reference layer in the Studio editor either way.
  */
 export async function POST(request: Request) {
+  const limit = await checkAndRecordRouteRateLimit("vectorize-plan", callerIp(request), VECTORIZE_MAX_PER_MINUTE);
+  if (limit.limited) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again in a minute." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
+  }
+
   let body: VectorizeRequestBody;
   try {
     body = await request.json();

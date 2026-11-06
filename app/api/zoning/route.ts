@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { answerZoningQuestion, planToFacts, MAX_DOCUMENT_LENGTH } from "@/lib/zoningAssistant";
+import { callerIp, checkAndRecordRouteRateLimit } from "@/lib/entitlements";
 import type { FloorPlan } from "@/lib/layout/types";
 
 // Same reasoning as app/api/vectorize-plan/route.ts: the free-tier reasoning models in
 // the fallback chain can take 10-20s, and the default 10s Vercel function budget isn't
 // enough headroom for the full chain.
 export const maxDuration = 60;
+
+// Caller-level rate limit (see lib/entitlements.ts#checkAndRecordRouteRateLimit) -- same
+// budget as vectorize-plan, since every call here reaches the free-tier OpenRouter chain.
+const ZONING_MAX_PER_MINUTE = 10;
 
 interface ZoningRequestBody {
   question?: unknown;
@@ -35,6 +40,14 @@ function isFloorPlan(value: unknown): value is FloorPlan {
  * (components/ZoningPanel.tsx) surfaces the real error message.
  */
 export async function POST(request: Request) {
+  const limit = await checkAndRecordRouteRateLimit("zoning", callerIp(request), ZONING_MAX_PER_MINUTE);
+  if (limit.limited) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again in a minute." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
+  }
+
   let body: ZoningRequestBody;
   try {
     body = await request.json();

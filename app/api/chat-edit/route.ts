@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { applyChatCommand } from "@/lib/layout/chatEdit";
 import { interpretChatCommandWithAI } from "@/lib/layout/chatEditAI";
+import { callerIp, checkAndRecordRouteRateLimit } from "@/lib/entitlements";
 import type { FloorPlan } from "@/lib/layout/types";
 
 // The free-tier text models in the fallback chain (lib/layout/chatEditAI.ts) can take
@@ -8,6 +9,11 @@ import type { FloorPlan } from "@/lib/layout/types";
 // app/api/vectorize-plan/route.ts and app/api/zoning/route.ts, which already extend
 // the default Vercel function duration for the same OpenRouter fallback-chain pattern.
 export const maxDuration = 30;
+
+// Caller-level rate limit (see lib/entitlements.ts#checkAndRecordRouteRateLimit) -- this
+// route can fall through to the free-tier OpenRouter chain below, shared infrastructure
+// across the portfolio, so the budget is tighter than the pure-geometry routes.
+const CHAT_EDIT_MAX_PER_MINUTE = 15;
 
 interface ChatEditRequestBody {
   plan?: unknown;
@@ -31,6 +37,14 @@ function isPlan(value: unknown): value is FloorPlan {
  * the free regex path already understands, by calling this route directly.
  */
 export async function POST(request: Request) {
+  const limit = await checkAndRecordRouteRateLimit("chat-edit", callerIp(request), CHAT_EDIT_MAX_PER_MINUTE);
+  if (limit.limited) {
+    return NextResponse.json(
+      { ok: false, message: "Too many requests. Try again in a minute." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
+  }
+
   let body: ChatEditRequestBody;
   try {
     body = await request.json();

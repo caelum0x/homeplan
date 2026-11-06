@@ -254,6 +254,80 @@ export async function checkAndRecordClaimAttempt(email: string, ip: string): Pro
   }
 }
 
+const ROUTE_LIMIT_WINDOW_SECONDS = 60;
+
+/**
+ * Best-effort caller IP for rate-limiting only -- not a security boundary by itself
+ * (spoofable), same contract as the identically-named helper in
+ * app/api/pro/claim/route.ts. Duplicated here (not imported from there) since that
+ * route predates this generic limiter and isn't itself in scope for this change.
+ */
+export function callerIp(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  const first = forwarded?.split(",")[0]?.trim();
+  return first || request.headers.get("x-real-ip")?.trim() || "unknown";
+}
+
+/**
+ * Generic per-IP request-rate limiter for the public, unauthenticated
+ * compute/LLM-backed routes (app/api/generate, chat-edit, vectorize-plan, zoning,
+ * fit-lot) -- same Postgres advisory-lock count-then-insert-in-one-transaction
+ * pattern as checkAndRecordClaimAttempt above, just keyed by (route, ip) instead
+ * of (email, ip), since these routes have no email to key on.
+ *
+ * Real gap this closes (found 2026-11-07): unlike /api/pro/claim, these routes had
+ * zero request-level throttling at all -- a scripted caller could fire unlimited
+ * parallel requests, exhausting the shared free-tier OpenRouter quota that
+ * chat-edit/vectorize-plan/zoning depend on (denying the AI-assist features to
+ * every other legitimate user, since those free models are shared infrastructure
+ * across the whole portfolio, not just this app) or tying up server
+ * compute/function-concurrency on generate's layout engine and fit-lot's
+ * geometric lot-fitting search.
+ *
+ * Fails open (never blocks a real request) when Postgres isn't configured
+ * (self-host without DATABASE_URL) or unreachable -- same contract as
+ * checkAndRecordClaimAttempt: a rate-limiter outage must never be the thing that
+ * takes the whole generator down, and self-host operators who skip Postgres
+ * entirely keep working exactly as before this change.
+ */
+export async function checkAndRecordRouteRateLimit(routeKey: string, ip: string, maxPerWindow: number): Promise<ClaimRateLimitResult> {
+  const client = sql();
+  if (!client) return { limited: false };
+  const windowStart = new Date(Date.now() - ROUTE_LIMIT_WINDOW_SECONDS * 1000).toISOString();
+  try {
+    // Self-provisions its own table, same pattern as every other table in this file.
+    await client`
+      CREATE TABLE IF NOT EXISTS api_route_attempts (
+        id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        route text NOT NULL,
+        ip text NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `;
+    await client`CREATE INDEX IF NOT EXISTS api_route_attempts_route_ip_idx ON api_route_attempts (route, ip, created_at)`;
+
+    const results = await client.transaction([
+      client`SELECT pg_advisory_xact_lock(hashtext('homeplan_route:' || ${routeKey} || ':' || ${ip}))`,
+      client`
+        INSERT INTO api_route_attempts (route, ip)
+        SELECT ${routeKey}, ${ip}
+        WHERE (SELECT count(*)::int FROM api_route_attempts WHERE route = ${routeKey} AND ip = ${ip} AND created_at > ${windowStart}) < ${maxPerWindow}
+        RETURNING 1
+      `,
+    ]);
+    const inserted = (results[1] as unknown[]).length > 0;
+
+    if (!inserted) {
+      return { limited: true, retryAfterSeconds: ROUTE_LIMIT_WINDOW_SECONDS };
+    }
+    return { limited: false };
+  } catch (error) {
+    // Fail open, same reasoning as checkAndRecordClaimAttempt's own catch block.
+    console.error(`HomePlan entitlements: checkAndRecordRouteRateLimit(${routeKey}) failed, failing open`, error instanceof Error ? error.message : error);
+    return { limited: false };
+  }
+}
+
 /**
  * Marks a magic-link claim token's nonce as used (app/api/pro/verify). The
  * token's own signature+expiry (lib/proClaimToken.ts) only proves it was

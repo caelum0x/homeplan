@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { fitMultiStoryPlanToLot, fitPlanToLot, type Point } from "@/lib/layout/lotFit";
+import { callerIp, checkAndRecordRouteRateLimit } from "@/lib/entitlements";
 import type { FloorPlan } from "@/lib/layout/types";
+
+// Caller-level rate limit (see lib/entitlements.ts#checkAndRecordRouteRateLimit) -- no
+// external model call here (pure geometry), but up to 8 floors x 40-point lot polygons
+// is still a real CPU-bound search, so this stays bounded like the other four routes.
+const FIT_LOT_MAX_PER_MINUTE = 30;
 
 interface FitLotRequestBody {
   plan?: unknown;
@@ -69,6 +75,14 @@ function isLotPolygon(value: unknown): value is Point[] {
  * around.
  */
 export async function POST(request: Request) {
+  const limit = await checkAndRecordRouteRateLimit("fit-lot", callerIp(request), FIT_LOT_MAX_PER_MINUTE);
+  if (limit.limited) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again in a minute." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
+  }
+
   let body: FitLotRequestBody;
   try {
     body = await request.json();

@@ -3,6 +3,7 @@ import { parseDescription } from "@/lib/parseDescription";
 import { generateFloorPlanOptions } from "@/lib/layout/generate";
 import { generateMultiStoryOptions } from "@/lib/layout/multiStory";
 import { isProRequest, GENERATE_PRO_REQUIRED_BODY } from "@/lib/proGate";
+import { callerIp, checkAndRecordRouteRateLimit } from "@/lib/entitlements";
 import {
   buildArchitectFitEvidence,
   finalizeArchitectFitReason,
@@ -11,6 +12,12 @@ import {
   type ArchitectFitResult,
 } from "@/lib/architectFit";
 import type { BriefInput } from "@/lib/layout/types";
+
+// Caller-level rate limit (see lib/entitlements.ts#checkAndRecordRouteRateLimit): this is
+// the free, zero-signup core generator, so the budget is generous -- just enough to stop a
+// scripted caller from hammering the layout engine, not to throttle a real person iterating
+// on briefs.
+const GENERATE_MAX_PER_MINUTE = 30;
 
 interface GenerateRequestBody {
   description?: unknown;
@@ -58,6 +65,14 @@ async function computeArchitectFit(brief: BriefInput, hitProGate: boolean): Prom
 }
 
 export async function POST(request: Request) {
+  const limit = await checkAndRecordRouteRateLimit("generate", callerIp(request), GENERATE_MAX_PER_MINUTE);
+  if (limit.limited) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again in a minute." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
+  }
+
   let body: GenerateRequestBody;
   try {
     body = await request.json();
