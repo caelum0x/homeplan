@@ -7,9 +7,12 @@
 // tool, https://github.com/Sandflow-ai/sand3d) at the exact same real-world
 // dimensions the old parametric placeholders used (wardrobe 72in, dresser 32in,
 // nightstand 24in, TV stand 20in, bookshelf 72in w/ 3 shelves, fridge 68in, stove
-// 36in+cooktop, kitchen island 36in) — see that directory's LICENSE.txt for
-// provenance. This is additive: a furniture item whose type has no entry here keeps
-// rendering the existing parametric geometry, exactly as before.
+// 36in+cooktop, kitchen island 36in, armchair 3ft sq, coffee table 18in, office chair
+// 18in seat/5-caster base, single bed 3.2ftx6.5ft, toilet 16in bowl/20in tank, bathtub
+// 2.6ftx5ft/16in wall, bath vanity sink 32in counter, kitchen sink 36in counter) — see
+// that directory's LICENSE.txt for provenance. This is additive: a furniture item
+// whose type has no entry here keeps rendering the existing parametric geometry,
+// exactly as before.
 "use client";
 
 import * as THREE from "three";
@@ -20,7 +23,8 @@ import type { FurnitureType } from "./layout/types";
  * Every vendored CC0 mesh (sofa, bed, table, chair, desk — see
  * public/assets/furniture-cc0/LICENSE.txt) plus every originally-generated sand3d
  * mesh (wardrobe, dresser, nightstand, tv_stand, bookshelf, fridge, stove,
- * kitchen_island — see public/assets/furniture-sand3d/LICENSE.txt and
+ * kitchen_island, armchair, coffee_table, office_chair, bed_single, toilet, bathtub,
+ * sink_bath, sink_kitchen — see public/assets/furniture-sand3d/LICENSE.txt and
  * scripts/sand3d/*.py) is wired here, each via the exact same real-mesh swap-in
  * path in FloorPlan3D.tsx. Mapped to the catalog type each source model actually
  * depicts (bedDouble -> bed_queen, the plain table -> dining_table, the plain
@@ -42,6 +46,16 @@ export const FURNITURE_GLB_ASSETS: Partial<Record<FurnitureType, string>> = {
   fridge: "/assets/furniture-sand3d/fridge.glb",
   stove: "/assets/furniture-sand3d/stove.glb",
   kitchen_island: "/assets/furniture-sand3d/kitchen_island.glb",
+  // Third sand3d pass (2026-11-06, later still): the remaining FurnitureType values
+  // that were still plain parametric primitives.
+  armchair: "/assets/furniture-sand3d/armchair.glb",
+  coffee_table: "/assets/furniture-sand3d/coffee_table.glb",
+  office_chair: "/assets/furniture-sand3d/office_chair.glb",
+  bed_single: "/assets/furniture-sand3d/bed_single.glb",
+  toilet: "/assets/furniture-sand3d/toilet.glb",
+  bathtub: "/assets/furniture-sand3d/bathtub.glb",
+  sink_bath: "/assets/furniture-sand3d/sink_bath.glb",
+  sink_kitchen: "/assets/furniture-sand3d/sink_kitchen.glb",
 };
 
 let cachedLoader: GLTFLoader | null = null;
@@ -111,6 +125,22 @@ const GLB_NATIVE_FOOTPRINT_FT: Partial<Record<FurnitureType, { w: number; h: num
   stove: { w: 0.762 / 0.3048, h: 0.69 / 0.3048 },
   // scripts/sand3d/kitchen_island.py's exported mesh measured bounding box: 1.676m x 0.914m.
   kitchen_island: { w: 1.676 / 0.3048, h: 0.914 / 0.3048 },
+  // scripts/sand3d/armchair.py's exported mesh measured bounding box: 0.914m x 0.914m.
+  armchair: { w: 0.914 / 0.3048, h: 0.914 / 0.3048 },
+  // scripts/sand3d/coffee_table.py's exported mesh measured bounding box: 1.067m x 0.610m.
+  coffee_table: { w: 1.067 / 0.3048, h: 0.61 / 0.3048 },
+  // scripts/sand3d/office_chair.py's exported mesh measured bounding box: 0.549m x 0.531m.
+  office_chair: { w: 0.549 / 0.3048, h: 0.531 / 0.3048 },
+  // scripts/sand3d/bed_single.py's exported mesh measured bounding box: 0.975m x 1.981m.
+  bed_single: { w: 0.975 / 0.3048, h: 1.981 / 0.3048 },
+  // scripts/sand3d/toilet.py's exported mesh measured bounding box: 0.439m x 0.632m.
+  toilet: { w: 0.439 / 0.3048, h: 0.632 / 0.3048 },
+  // scripts/sand3d/bathtub.py's exported mesh measured bounding box: 0.792m x 1.524m.
+  bathtub: { w: 0.792 / 0.3048, h: 1.524 / 0.3048 },
+  // scripts/sand3d/sink_bath.py's exported mesh measured bounding box: 0.610m x 0.502m.
+  sink_bath: { w: 0.61 / 0.3048, h: 0.502 / 0.3048 },
+  // scripts/sand3d/sink_kitchen.py's exported mesh measured bounding box: 0.701m x 0.624m.
+  sink_kitchen: { w: 0.701 / 0.3048, h: 0.624 / 0.3048 },
 };
 
 /** Uniform scale factor to best-fit `item`'s real footprint without distorting the mesh. */

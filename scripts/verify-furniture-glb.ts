@@ -55,6 +55,19 @@ const SAND3D_MIN_MESH_COUNT: Record<string, number> = {
   "fridge.glb": 6,
   "stove.glb": 11,
   "kitchen_island.glb": 7,
+  // Third sand3d pass (2026-11-06, later still): armchair/coffee_table/office_chair/
+  // bed_single (clear furniture) plus toilet/bathtub/sink_bath/sink_kitchen (bath/
+  // kitchen fixtures whose real-world proportions were already established via this
+  // project's own DIM constants) — see scripts/sand3d/*.py and that directory's
+  // LICENSE.txt for what each real part is.
+  "armchair.glb": 6,
+  "coffee_table.glb": 6,
+  "office_chair.glb": 15,
+  "bed_single.glb": 5,
+  "toilet.glb": 5,
+  "bathtub.glb": 5,
+  "sink_bath.glb": 6,
+  "sink_kitchen.glb": 7,
 };
 
 async function main() {
@@ -130,6 +143,14 @@ async function main() {
     "fridge",
     "stove",
     "kitchen_island",
+    "armchair",
+    "coffee_table",
+    "office_chair",
+    "bed_single",
+    "toilet",
+    "bathtub",
+    "sink_bath",
+    "sink_kitchen",
   ];
   check(
     `all ${expectedWiredTypes.length} vendored furniture types are wired to a real mesh (${expectedWiredTypes.join(", ")})`,

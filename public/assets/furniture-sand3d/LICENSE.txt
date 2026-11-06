@@ -10,10 +10,11 @@ provenance.
 Every .glb in this directory is ORIGINALLY generated for HomePlan, from scratch, by
 the real part-based Python programs committed at scripts/sand3d/*.py in this repo
 (wardrobe.py, dresser.py, nightstand.py, tv_stand.py, bookshelf.py, fridge.py,
-stove.py, kitchen_island.py — plus scripts/sand3d/common.py for the shared
-inch/foot-to-centimetre unit helpers). Each program is regenerable: re-run it with
-the venv at scripts/sand3d/.venv (`pip install sand3d`, Python 3.13) to reproduce
-the exact same mesh.
+stove.py, kitchen_island.py, armchair.py, coffee_table.py, office_chair.py,
+bed_single.py, toilet.py, bathtub.py, sink_bath.py, sink_kitchen.py — plus
+scripts/sand3d/common.py for the shared inch/foot-to-centimetre unit helpers). Each
+program is regenerable: re-run it with the venv at scripts/sand3d/.venv (`pip install
+sand3d`, Python 3.13) to reproduce the exact same mesh.
 
 Each mesh is built from real named parts (a cabinet body, a shelf board, a drawer
 pull, a cooktop burner ring, etc. -- see each .py file), not a single undecorated
@@ -29,6 +30,14 @@ lib/layout/furniture.ts's FURNITURE_CATALOG:
   fridge.glb           -- 2.8ft x 2.6ft footprint, 68in tall (fridge)
   stove.glb            -- 2.5ft x 2.2ft footprint, 36in body + cooktop slab (stove)
   kitchen_island.glb   -- 5.5ft x 3ft footprint, 36in counter height (kitchen_island)
+  armchair.glb         -- 3ft x 3ft footprint, 18in seat/20in back/24in arms (armchair)
+  coffee_table.glb     -- 3.5ft x 2ft footprint, 18in height w/ stretcher shelf (coffee_table)
+  office_chair.glb     -- 1.8ft x 1.8ft footprint, 18in seat, 5-caster swivel base (office_chair)
+  bed_single.glb       -- 3.2ft x 6.5ft footprint, 14in frame/10in mattress/24in headboard (bed_single)
+  toilet.glb           -- 1.6ft x 2.3ft footprint, 16in bowl/20in tank (toilet)
+  bathtub.glb          -- 2.6ft x 5ft footprint, 16in wall height, real hollow basin (bathtub)
+  sink_bath.glb        -- 2ft x 1.6ft footprint, 32in vanity-counter height (sink_bath)
+  sink_kitchen.glb     -- 2.3ft x 2ft footprint, 36in counter height (sink_kitchen)
 
 Wired into the live 3D view the same way the public/assets/furniture-cc0/ Kenney
 meshes already are: lib/furnitureAssets.ts's FURNITURE_GLB_ASSETS map + a
@@ -38,6 +47,18 @@ silent fallback to the placeholder on any load failure).
 
 Generated 2026-11-06 as the second real pass of HomePlan's furniture-realism work
 (see plans/homeplan.md) -- the first pass vendored 5 external CC0 Kenney meshes;
-this pass closes the remaining gap (wardrobe, dresser, nightstand, TV stand,
-bookshelf, fridge, stove/range, kitchen island) with originally-generated geometry
-instead of a second external asset search.
+the second pass closed the wardrobe/dresser/nightstand/TV stand/bookshelf/
+fridge/stove/kitchen island gap with originally-generated geometry instead of a
+second external asset search.
+
+A third pass, later the same day, closed the remaining FurnitureType values that
+were still plain parametric primitives: armchair, coffee_table, office_chair and
+bed_single (clear furniture, same pattern exactly), plus toilet, bathtub, sink_bath
+and sink_kitchen (bath/kitchen fixtures -- attempted because this project's own
+DIM constants for these already matched real standard fixture sizes, e.g. a 30in x
+60in alcove tub, a 32in vanity counter, a 36in kitchen counter, so no new
+real-world-proportion guessing was needed). "rug" and "shower" were left as
+parametric: a rug is already a flat decor plane with no real multi-part geometry
+for sand3d to add, and a shower stall's realistic detail (full tile pattern, glass
+door frame hardware) would need reference proportions this pass was not confident
+enough in to assert as "real," so it was left for a future pass rather than guessed.
