@@ -16,6 +16,7 @@ import { randomUUID } from "crypto";
 import type { FloorPlan, Wall } from "./layout/types";
 
 const FT_TO_M = 0.3048;
+const SQFT_TO_SQM = FT_TO_M * FT_TO_M;
 
 const WALL_HEIGHT_FT = 9;
 const INTERIOR_WALL_THICKNESS_FT = 0.4;
@@ -333,6 +334,28 @@ export function floorPlanToIfc(plan: FloorPlan): string {
       `IFCSPACE(${stepString(newGuid())},$,${stepString(room.label)},$,$,${step.ref(placement)},${step.ref(shape)},$,.ELEMENT.,.INTERNAL.,$)`,
     );
     containedIds.push(space);
+
+    // Qto_SpaceBaseQuantities: a real IfcElementQuantity/IfcQuantityArea per IfcSpace, the
+    // standard buildingSMART quantity set a real room/area schedule in Revit/ArchiCAD reads --
+    // without this, a BIM-native viewer sees a named space with no machine-readable area at
+    // all, only a human-readable Name string. AreaValue is this room's own `areaSqft` (the
+    // exact number `generate.ts` computed and the app's own UI/warnings already cite, not a
+    // re-derivation from the box geometry above), converted to the file's own assigned
+    // IFCAREAUNIT (square metres). Attribute order/arity (Name,Description,Unit,AreaValue,
+    // Formula for IfcQuantityArea; GlobalId,OwnerHistory,Name,Description,
+    // MethodOfMeasurement,Quantities for IfcElementQuantity; GlobalId,OwnerHistory,Name,
+    // Description,RelatedObjects,RelatingPropertyDefinition for IfcRelDefinesByProperties)
+    // walked against the real IFC4 EXPRESS schema the same way the rest of this file's
+    // entities were (see the 2026-11-06 schema-audit history in plans/homeplan.md).
+    const areaQuantity = step.add(
+      `IFCQUANTITYAREA(${stepString("NetFloorArea")},$,$,${stepReal(room.areaSqft * SQFT_TO_SQM)},$)`,
+    );
+    const quantitySet = step.add(
+      `IFCELEMENTQUANTITY(${stepString(newGuid())},$,${stepString("Qto_SpaceBaseQuantities")},$,$,${step.refs([areaQuantity])})`,
+    );
+    step.add(
+      `IFCRELDEFINESBYPROPERTIES(${stepString(newGuid())},$,$,$,${step.refs([space])},${step.ref(quantitySet)})`,
+    );
   }
 
   // --- Walls -> IfcWall, true-length slab along the wall's own direction ---

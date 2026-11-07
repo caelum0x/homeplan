@@ -28,6 +28,9 @@ const IFCRELVOIDSELEMENT = 1401173127;
 const IFCRELFILLSELEMENT = 3940055652;
 const IFCAXIS2PLACEMENT3D = 2740243338;
 const IFCRELCONTAINEDINSPATIALSTRUCTURE = 3242617779;
+const IFCELEMENTQUANTITY = 1883228015;
+const IFCQUANTITYAREA = 2044713172;
+const IFCRELDEFINESBYPROPERTIES = 4186316022;
 
 /**
  * Real-code-review pass (2026-11-06) found and fixed three gaps the entity-count checks above
@@ -94,6 +97,10 @@ async function checkEmptyPlan(api: InstanceType<typeof IfcAPI>) {
   check("empty plan: web-ifc still accepted the file as a real (if empty) model", modelID >= 0);
   check("empty plan: zero IFCSPACE/IFCWALL/IFCDOOR/IFCWINDOW, as expected", [IFCSPACE, IFCWALL, IFCDOOR, IFCWINDOW].every((t) => api.GetLineIDsWithType(modelID, t).size() === 0));
   check("empty plan: zero IFCRELCONTAINEDINSPATIALSTRUCTURE (not an invalid empty-set one)", api.GetLineIDsWithType(modelID, IFCRELCONTAINEDINSPATIALSTRUCTURE).size() === 0);
+  check(
+    "empty plan: zero IFCELEMENTQUANTITY/IFCQUANTITYAREA/IFCRELDEFINESBYPROPERTIES (no rooms to attach area quantities to)",
+    [IFCELEMENTQUANTITY, IFCQUANTITYAREA, IFCRELDEFINESBYPROPERTIES].every((t) => api.GetLineIDsWithType(modelID, t).size() === 0),
+  );
   api.CloseModel(modelID);
 }
 
@@ -156,6 +163,66 @@ function checkOpeningCoverage(api: InstanceType<typeof IfcAPI>, modelID: number,
   check(`${label}: at least 90% of real doors+windows (${doorPlusWindowCount}) got a real opening cut into their host wall (got ${openingIds.size()}, ${Math.round(coverage * 100)}%)`, coverage >= 0.9);
 }
 
+// Independently re-derived from lib/exportIfc.ts's own FT_TO_M*FT_TO_M (not imported) so this
+// check can't silently pass just because both sides share one constant with a latent bug in it.
+const SQFT_TO_SQM_CHECK = 0.3048 * 0.3048;
+
+/**
+ * Real structural check (2026-11-07, closing the "no machine-readable area" gap a BIM-native
+ * competitor's room/cost schedule would need): confirms every IfcSpace in the real parsed
+ * model is actually linked, via a real IfcRelDefinesByProperties -> IfcElementQuantity ->
+ * IfcQuantityArea chain (not just "the entity type exists somewhere in the file"), to a
+ * positive real NetFloorArea quantity, and that the sum of those areas matches the plan's own
+ * `room.areaSqft` figures (converted to the file's assigned square-metre unit) -- the same
+ * number this app's own UI/warnings already cite, not a separately-invented one.
+ */
+function checkSpaceAreaQuantities(api: InstanceType<typeof IfcAPI>, modelID: number, label: string, plan: FloorPlan) {
+  const eqIds = api.GetLineIDsWithType(modelID, IFCELEMENTQUANTITY);
+  const qaIds = api.GetLineIDsWithType(modelID, IFCQUANTITYAREA);
+  const rdpIds = api.GetLineIDsWithType(modelID, IFCRELDEFINESBYPROPERTIES);
+  console.log(
+    `${label}: ${eqIds.size()} IFCELEMENTQUANTITY, ${qaIds.size()} IFCQUANTITYAREA, ${rdpIds.size()} IFCRELDEFINESBYPROPERTIES (plan has ${plan.rooms.length} rooms)`,
+  );
+
+  check(`${label}: one Qto_SpaceBaseQuantities IfcElementQuantity per real room`, eqIds.size() === plan.rooms.length);
+  check(`${label}: one IfcQuantityArea per real room`, qaIds.size() === plan.rooms.length);
+  check(`${label}: one IfcRelDefinesByProperties per real room`, rdpIds.size() === plan.rooms.length);
+
+  let resolvedCount = 0;
+  let allPositive = true;
+  let areaSumSqm = 0;
+  for (let i = 0; i < rdpIds.size(); i++) {
+    const rdp = api.GetLine(modelID, rdpIds.get(i));
+    const spaceRef = rdp.RelatedObjects?.[0]?.value;
+    const eqRef = rdp.RelatingPropertyDefinition?.value;
+    if (!spaceRef || !eqRef) continue;
+    const spaceLine = api.GetLine(modelID, spaceRef);
+    const eqLine = api.GetLine(modelID, eqRef);
+    if (!spaceLine || spaceLine.type !== IFCSPACE || !eqLine || eqLine.type !== IFCELEMENTQUANTITY) continue;
+    const qaRef = eqLine.Quantities?.[0]?.value;
+    const qaLine = qaRef ? api.GetLine(modelID, qaRef) : null;
+    if (!qaLine || qaLine.type !== IFCQUANTITYAREA) continue;
+    const areaSqm = qaLine.AreaValue?._representationValue;
+    if (typeof areaSqm !== "number" || areaSqm <= 0) {
+      allPositive = false;
+      continue;
+    }
+    areaSumSqm += areaSqm;
+    resolvedCount++;
+  }
+  check(
+    `${label}: every IfcRelDefinesByProperties really resolves IfcSpace -> IfcElementQuantity -> IfcQuantityArea in this model`,
+    resolvedCount === plan.rooms.length,
+  );
+  check(`${label}: every resolved room's NetFloorArea quantity is a positive real number`, allPositive);
+
+  const expectedAreaSumSqm = plan.rooms.reduce((sum, r) => sum + r.areaSqft, 0) * SQFT_TO_SQM_CHECK;
+  check(
+    `${label}: sum of real IfcQuantityArea values (${areaSumSqm.toFixed(2)}m²) matches plan.rooms' own areaSqft converted to m² (${expectedAreaSumSqm.toFixed(2)}m²)`,
+    Math.abs(areaSumSqm - expectedAreaSumSqm) < 0.01,
+  );
+}
+
 async function main() {
   const input = parseDescription("3 bedroom 2 bath, 1800 sqft, open plan kitchen living");
   const plan = generateFloorPlan(input);
@@ -187,6 +254,7 @@ async function main() {
 
   checkOpeningCoverage(api, modelID, "first plan", plan.doors.length + (plan.windows ?? []).length);
   checkAxisPlacementsAreSpecValid(api, modelID, "first plan");
+  checkSpaceAreaQuantities(api, modelID, "first plan", plan);
 
   api.CloseModel(modelID);
 
@@ -209,6 +277,7 @@ async function main() {
 
   checkOpeningCoverage(api, modelID2, "second plan", plan2.doors.length + (plan2.windows ?? []).length);
   checkAxisPlacementsAreSpecValid(api, modelID2, "second plan");
+  checkSpaceAreaQuantities(api, modelID2, "second plan", plan2);
 
   api.CloseModel(modelID2);
 
